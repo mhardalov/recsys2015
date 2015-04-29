@@ -34,7 +34,13 @@ public class SGDClassification {
 	FeatureVectorEncoder bias;
 	FeatureVectorEncoder clickValues;
 	FeatureVectorEncoder timesAvgValues;
+	FeatureVectorEncoder timesSessionValues;
+	FeatureVectorEncoder specialOffers;
+	FeatureVectorEncoder categoriesCount;
+	FeatureVectorEncoder productCount;
+	FeatureVectorEncoder productsItemsCount;
 	FeatureVectorEncoder encoder;
+
 	AdaptiveLogisticRegression learningAlgorithm;
 	CrossFoldLearner model;
 
@@ -45,13 +51,30 @@ public class SGDClassification {
 		this.traceDictionary = new TreeMap<String, Set<Integer>>();
 
 		this.encoder = new StaticWordValueEncoder("Strings");
-		this.encoder.setProbes(2);
+		// this.encoder.setProbes(2);
 		this.encoder.setTraceDictionary(traceDictionary);
 
 		this.clickValues = new ConstantValueEncoder("Clicks");
 		this.clickValues.setTraceDictionary(traceDictionary);
+
 		this.timesAvgValues = new ConstantValueEncoder("TimesAvg");
 		this.timesAvgValues.setTraceDictionary(traceDictionary);
+
+		this.timesSessionValues = new ConstantValueEncoder("TimesSession");
+		this.timesSessionValues.setTraceDictionary(traceDictionary);
+
+		this.specialOffers = new ConstantValueEncoder("SpecialOffers");
+		this.specialOffers.setTraceDictionary(traceDictionary);
+
+		this.categoriesCount = new ConstantValueEncoder("CategoriesCount");
+		this.categoriesCount.setTraceDictionary(traceDictionary);
+
+		this.productCount = new ConstantValueEncoder("ProductCount");
+		this.productCount.setTraceDictionary(traceDictionary);
+
+		this.productsItemsCount = new ConstantValueEncoder("ProductsItemsCount");
+		this.productsItemsCount.setTraceDictionary(traceDictionary);
+
 		this.bias = new ConstantValueEncoder("Intercept");
 		this.bias.setTraceDictionary(traceDictionary);
 
@@ -72,7 +95,13 @@ public class SGDClassification {
 
 		// TODO: add features
 		int clickCount = session.getClicks().size();
-		clickValues.addToVector("ClicksCount", clickCount, v);
+		clickValues.addToVector((byte[]) null, clickCount, v);
+
+		timesSessionValues.addToVector((byte[]) null,
+				session.getClickSessionLength(), v);
+
+		timesAvgValues.addToVector((byte[]) null,
+				session.getAvgSessionLength(), v);
 
 		Map<String, Integer> clickedItems = session.getClickedItems();
 
@@ -84,24 +113,18 @@ public class SGDClassification {
 			if (category.length() > 3) {
 				productsCount++;
 				productItemsCount += itemCount;
-				encoder.addToVector("product", itemCount, v);
+				encoder.addToVector("product", itemCount / clickCount, v);
 			} else {
-				encoder.addToVector(category, itemCount, v);
+				encoder.addToVector(category, itemCount / clickCount, v);
 			}
 
 		}
-		
-		encoder.addToVector("categoriesCount", clickedItems.size(), v);
-		encoder.addToVector("productsCount", productsCount, v);
-		encoder.addToVector("productsItemsCount", productItemsCount, v);
-		
-		timesAvgValues.addToVector("SessionLength",
-				session.getClickSessionLength(), v);
 
-		timesAvgValues.addToVector("AvgSessionLength",
-				session.getAvgSessionLength(), v);
+		categoriesCount.addToVector((byte[]) null, clickedItems.size(), v);
+		productCount.addToVector((byte[]) null, productsCount, v);
+		productsItemsCount.addToVector((byte[]) null, productItemsCount, v);
 
-		bias.addToVector("", 1, v);
+		bias.addToVector((byte[]) null, 1, v);
 
 		return v;
 	}
@@ -218,11 +241,11 @@ public class SGDClassification {
 				+ this.mesurer.getGuessedPercent() + "% ("
 				+ this.mesurer.getGuessed() + "/" + testSessionSize + ")");
 
-		System.out.println("AUC: " + model.auc());
-		System.out.println("Correct: " + model.percentCorrect());
-		System.out.println("LogLikehood: " + model.getLogLikelihood());
-		System.out.println("Record: " + model.getRecord());
-		System.out.println("Features: " + model.getNumFeatures());
+		InfoOutputHelper.printInfo("AUC: " + model.auc());
+		InfoOutputHelper.printInfo("Correct: " + model.percentCorrect());
+		InfoOutputHelper.printInfo("LogLikehood: " + model.getLogLikelihood());
+		InfoOutputHelper.printInfo("Record: " + model.getRecord());
+		InfoOutputHelper.printInfo("Features: " + model.getNumFeatures());
 
 		System.out.println();
 	}
@@ -246,7 +269,7 @@ public class SGDClassification {
 			md.update(v, traceDictionary, model);
 		}
 
-		for (ModelDissector.Weight w : md.summary(100)) {
+		for (ModelDissector.Weight w : md.summary(1000)) {
 			System.out.printf("%s\t%f\t%d\n", w.getFeature(), w.getWeight(),
 					w.getMaxImpact());
 		}

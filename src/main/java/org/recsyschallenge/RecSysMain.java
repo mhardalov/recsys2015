@@ -1,5 +1,6 @@
 package org.recsyschallenge;
 
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -39,9 +40,9 @@ public class RecSysMain {
 
 	public static void main(String[] args) throws Exception {
 
-		// Max buys 504547
+		// Max buys 509696
 		FilesParserHelper parser = FilesParserHelper.newInstance(CLICKS_PATH,
-				BUYS_PATH, 504547, ratio);
+				BUYS_PATH, 509696, ratio);
 		Map<Integer, SessionInfo> sessions = parser.parseSessions();
 
 		int sessionsSize = sessions.size();
@@ -51,7 +52,7 @@ public class RecSysMain {
 		List<SessionInfo> sessionsList = new ArrayList<SessionInfo>(
 				sessions.values());
 
-		Collections.shuffle(sessionsList);
+		Collections.shuffle(sessionsList, new SecureRandom());
 
 		// 10% of all data
 		int testRecords = (int) (sessionsSize * 0.1);

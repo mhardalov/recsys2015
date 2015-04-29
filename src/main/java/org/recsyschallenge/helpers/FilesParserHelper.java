@@ -119,8 +119,10 @@ public class FilesParserHelper {
 
 		this.parseClicks();
 		if (!this.loadAllData) {
-			assert this.sessions.size() <= this.sessionsLimit * 2;
+			assert this.sessions.size() <= this.sessionsLimit * (1 + this.clicksRatio);
 		}
+		
+		System.out.println();
 
 		return this.sessions;
 	}
