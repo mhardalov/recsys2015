@@ -36,6 +36,7 @@ public class SGDClassification {
 	FeatureVectorEncoder timesAvgValues;
 	FeatureVectorEncoder timesSessionValues;
 	FeatureVectorEncoder specialOffers;
+	FeatureVectorEncoder notCategorizedItems;
 	FeatureVectorEncoder categoriesCount;
 	FeatureVectorEncoder productCount;
 	FeatureVectorEncoder productsItemsCount;
@@ -65,6 +66,10 @@ public class SGDClassification {
 
 		this.specialOffers = new ConstantValueEncoder("SpecialOffers");
 		this.specialOffers.setTraceDictionary(traceDictionary);
+
+		this.notCategorizedItems = new ConstantValueEncoder(
+				"NotCategorizedItems");
+		this.notCategorizedItems.setTraceDictionary(traceDictionary);
 
 		this.categoriesCount = new ConstantValueEncoder("CategoriesCount");
 		this.categoriesCount.setTraceDictionary(traceDictionary);
@@ -115,9 +120,18 @@ public class SGDClassification {
 				productItemsCount += itemCount;
 				encoder.addToVector("product", itemCount / clickCount, v);
 			} else {
+				switch (category) {
+				case "0":
+					notCategorizedItems
+							.addToVector((byte[]) null, itemCount, v);
+					break;
+				case "S":
+					specialOffers.addToVector((byte[]) null, itemCount, v);
+					break;
+				}
+
 				encoder.addToVector(category, itemCount / clickCount, v);
 			}
-
 		}
 
 		categoriesCount.addToVector((byte[]) null, clickedItems.size(), v);

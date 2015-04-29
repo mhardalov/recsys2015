@@ -64,7 +64,7 @@ public class RecSysMain {
 
 		classification.train(train);
 		classification.test(test, false);
-		classification.dissect(train);
+		classification.dissect(sessionsList);
 
 		// RecommenderSVD recommender = new RecommenderSVD(sessionsList);
 		// List<RecommendedItem> users = recommender.recommendUser(87, 100);
