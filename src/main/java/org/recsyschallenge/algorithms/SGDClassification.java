@@ -33,6 +33,7 @@ public class SGDClassification {
 	Map<String, Set<Integer>> traceDictionary;
 	FeatureVectorEncoder bias;
 	FeatureVectorEncoder clickValues;
+	FeatureVectorEncoder timesAvgValues;
 	FeatureVectorEncoder encoder;
 	AdaptiveLogisticRegression learningAlgorithm;
 	CrossFoldLearner model;
@@ -48,6 +49,9 @@ public class SGDClassification {
 		this.encoder.setTraceDictionary(traceDictionary);
 
 		this.clickValues = new ConstantValueEncoder("Clicks");
+		this.clickValues.setTraceDictionary(traceDictionary);
+		this.timesAvgValues = new ConstantValueEncoder("TimesAvg");
+		this.timesAvgValues.setTraceDictionary(traceDictionary);
 		this.bias = new ConstantValueEncoder("Intercept");
 		this.bias.setTraceDictionary(traceDictionary);
 
@@ -56,6 +60,7 @@ public class SGDClassification {
 
 		learningAlgorithm.setInterval(interval);
 		learningAlgorithm.setAveragingWindow(avgWindow);
+		learningAlgorithm.setThreadCount(100);
 
 		this.buySessions = new ArrayList<SessionInfo>();
 
@@ -71,16 +76,30 @@ public class SGDClassification {
 
 		Map<String, Integer> clickedItems = session.getClickedItems();
 
+		long productsCount = 0;
+		int productItemsCount = 0;
 		for (Entry<String, Integer> item : clickedItems.entrySet()) {
-			encoder.addToVector(item.getKey(), (item.getValue() / clickCount),
-					v);
-		}
+			String category = item.getKey();
+			int itemCount = item.getValue();
+			if (category.length() > 3) {
+				productsCount++;
+				productItemsCount += itemCount;
+				encoder.addToVector("product", itemCount, v);
+			} else {
+				encoder.addToVector(category, itemCount, v);
+			}
 
-		// clickValues.addToVector("SessionLength",
-		// Math.log(1 + session.getClickSessionLength()), v);
-		//
-		// clickValues.addToVector("AvgSessionLength",
-		// Math.log(1 + session.getAvgSessionLength()), v);
+		}
+		
+		encoder.addToVector("categoriesCount", clickedItems.size(), v);
+		encoder.addToVector("productsCount", productsCount, v);
+		encoder.addToVector("productsItemsCount", productItemsCount, v);
+		
+		timesAvgValues.addToVector("SessionLength",
+				session.getClickSessionLength(), v);
+
+		timesAvgValues.addToVector("AvgSessionLength",
+				session.getAvgSessionLength(), v);
 
 		bias.addToVector("", 1, v);
 
@@ -114,10 +133,8 @@ public class SGDClassification {
 	private boolean test(Vector v, Integer og, int k, boolean extendedOuput) {
 		SessionEventType actual = SessionEventType.valueOf(og);
 
-		Vector p = new DenseVector(2000);
-		model.classifyFull(p, v);
-		SessionEventType estimated = SessionEventType
-				.valueOf(p.maxValueIndex());
+		int estematedInt = this.classify(v);
+		SessionEventType estimated = SessionEventType.valueOf(estematedInt);
 
 		boolean correct = (estimated == actual);
 
@@ -132,6 +149,14 @@ public class SGDClassification {
 		}
 
 		return (correct && estimated == SessionEventType.BuyEvent);
+	}
+
+	private int classify(Vector v) {
+		Vector p = new DenseVector(2000);
+		model.classifyFull(p, v);
+		int estimated = p.maxValueIndex();
+
+		return estimated;
 	}
 
 	public void train(final List<SessionInfo> trainClicks) throws IOException {
@@ -193,6 +218,12 @@ public class SGDClassification {
 				+ this.mesurer.getGuessedPercent() + "% ("
 				+ this.mesurer.getGuessed() + "/" + testSessionSize + ")");
 
+		System.out.println("AUC: " + model.auc());
+		System.out.println("Correct: " + model.percentCorrect());
+		System.out.println("LogLikehood: " + model.getLogLikelihood());
+		System.out.println("Record: " + model.getRecord());
+		System.out.println("Features: " + model.getNumFeatures());
+
 		System.out.println();
 	}
 
@@ -210,25 +241,20 @@ public class SGDClassification {
 		Collections.shuffle(subSessions, rand);
 
 		for (SessionInfo session : subSessions) {
-			// traceDictionary.clear();
+			traceDictionary.clear();
 			Vector v = this.profileToVector(session);
 			md.update(v, traceDictionary, model);
 		}
 
-		for (ModelDissector.Weight w : md.summary(1000)) {
+		for (ModelDissector.Weight w : md.summary(100)) {
 			System.out.printf("%s\t%f\t%d\n", w.getFeature(), w.getWeight(),
 					w.getMaxImpact());
 		}
 	}
 
-	public int classify(SessionInfo session) throws IOException {
+	public int classify(SessionInfo session) {
 		Vector v = this.profileToVector(session);
-
-		Vector p = new DenseVector(2000);
-		model.classifyFull(p, v);
-		int estimated = p.maxValueIndex();
-
-		return estimated;
+		return this.classify(v);
 	}
 
 	public List<SessionInfo> getBuySessions() {

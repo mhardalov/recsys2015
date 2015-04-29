@@ -12,8 +12,9 @@ import org.recsyschallenge.models.SessionInfo;
 
 public class RecSysMain {
 
-	private final static String CLICKS_PATH = "/media/ramdisk/yoochoose-clicks.dat";
-	private final static String BUYS_PATH = "/media/ramdisk/yoochoose-buys.dat";
+	private static final float ratio = (float) 3.5;
+	private static final String CLICKS_PATH = "/media/ramdisk/yoochoose-clicks.dat";
+	private static final String BUYS_PATH = "/media/ramdisk/yoochoose-buys.dat";
 
 	public static void randomForest() {
 		// String[] data = new String[sessionsSize];
@@ -38,9 +39,9 @@ public class RecSysMain {
 
 	public static void main(String[] args) throws Exception {
 
-		//Max buys 504547
+		// Max buys 504547
 		FilesParserHelper parser = FilesParserHelper.newInstance(CLICKS_PATH,
-				BUYS_PATH, 504548);
+				BUYS_PATH, 504547, ratio);
 		Map<Integer, SessionInfo> sessions = parser.parseSessions();
 
 		int sessionsSize = sessions.size();
@@ -58,11 +59,11 @@ public class RecSysMain {
 		List<SessionInfo> train = sessionsList.subList(testRecords,
 				sessionsSize);
 
-		SGDClassification classification = new SGDClassification(800, 500);
+		SGDClassification classification = new SGDClassification(8000, 5000);
 
 		classification.train(train);
 		classification.test(test, false);
-		classification.dissect(test);
+		classification.dissect(train);
 
 		// RecommenderSVD recommender = new RecommenderSVD(sessionsList);
 		// List<RecommendedItem> users = recommender.recommendUser(87, 100);

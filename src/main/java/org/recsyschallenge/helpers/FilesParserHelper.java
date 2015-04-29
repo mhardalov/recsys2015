@@ -21,24 +21,27 @@ public class FilesParserHelper {
 	private Map<Integer, SessionInfo> sessions;
 	private final long sessionsLimit;
 	private final boolean loadAllData;
+	private final float clicksRatio;
 
 	public static FilesParserHelper newInstance(String clicksPath,
 			String buysPath) {
-		return new FilesParserHelper(clicksPath, buysPath, 0);
+		return new FilesParserHelper(clicksPath, buysPath, 0, 1);
 	}
 
 	public static FilesParserHelper newInstance(String clicksPath,
-			String buysPath, long sessionsLimit) {
-		return new FilesParserHelper(clicksPath, buysPath, sessionsLimit);
+			String buysPath, long sessionsLimit, float clicksRatio) {
+		return new FilesParserHelper(clicksPath, buysPath, sessionsLimit,
+				clicksRatio);
 	}
 
 	private FilesParserHelper(String clicksPath, String buysPath,
-			long sessionsLimit) {
+			long sessionsLimit, float clicksRatio) {
 		this.clicksPath = clicksPath;
 		this.buysPath = buysPath;
 		this.sessionsLimit = sessionsLimit;
 		this.loadAllData = (sessionsLimit <= 0);
 		this.sessions = new HashMap<Integer, SessionInfo>();
+		this.clicksRatio = clicksRatio;
 	}
 
 	private void parseClicks() throws IOException, ParseException {
@@ -48,8 +51,8 @@ public class FilesParserHelper {
 		CSVReader csvReader = new CSVReader(new InputStreamReader(csvFilename));
 
 		row = csvReader.readNext();
-		int i = 0;
-		int max = sessions.size();
+		long i = 0;
+		long max = (long) (sessions.size() * clicksRatio);
 		while (row != null) {
 
 			int sessionId = Integer.parseInt(row[0]);

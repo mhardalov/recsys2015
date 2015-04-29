@@ -57,9 +57,9 @@ public class SessionInfo {
 
 			// TODO: validate
 			// If it is product name then we transfer it to "product" feature
-			if (category.length() > 3) {
-				category = "product";
-			}
+//			if (category.length() > 3) {
+//				category = "product";
+//			}
 
 			Integer count = clickedItems.get(category);
 
@@ -75,26 +75,22 @@ public class SessionInfo {
 
 	public double getClickSessionLength() {
 		int clickSize = this.clicks.size();
-		if (clickSize == 0)
-			return 0;
 
 		Date firstClick = this.clicks.get(0).getTimestamp();
 		Date lastClick = this.clicks.get(this.clicks.size() - 1).getTimestamp();
 
-		return Math.abs(firstClick.getTime() - lastClick.getTime() / clickSize);
+		return Math.log(1 + lastClick.getTime() - firstClick.getTime()) / clickSize;
 	}
 
 	public double getAvgSessionLength() {
 		int clickSize = this.clicks.size();
-		if (clickSize == 0)
-			return 0;
 
 		double avg = 0;
 		for (SessionClicks click : this.clicks) {
 			avg += click.getTimestamp().getTime();
 		}
 
-		return avg / clickSize;
+		return Math.log(1 + avg) / clickSize;
 	}
 
 	public boolean isItemBought(int itemId) {
