@@ -3,7 +3,7 @@ package org.recsyschallenge.models;
 import java.text.ParseException;
 import java.util.Date;
 
-import org.recsyschallenge.helpers.TimeStampHelpers;
+import org.recsyschallenge.helpers.TimeStampHelper;
 
 public class SessionClicks {	
 	private final int sessionID;
@@ -13,7 +13,7 @@ public class SessionClicks {
 
 	public SessionClicks(String[] row) throws ParseException {
 		this.sessionID = Integer.parseInt(row[0]);
-		this.timestamp = TimeStampHelpers.parseDate(row[1]);
+		this.timestamp = TimeStampHelper.parseDate(row[1]);
 		this.itemId = Integer.parseInt(row[2]);
 		this.category = row[3];
 	}

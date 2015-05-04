@@ -1,5 +1,7 @@
-package org.recsyschallenge.algorithms;
+package org.recsyschallenge.algorithms.classification;
 
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -14,6 +16,7 @@ import org.apache.mahout.classifier.sgd.AdaptiveLogisticRegression;
 import org.apache.mahout.classifier.sgd.CrossFoldLearner;
 import org.apache.mahout.classifier.sgd.L1;
 import org.apache.mahout.classifier.sgd.ModelDissector;
+import org.apache.mahout.classifier.sgd.ModelSerializer;
 import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.RandomAccessSparseVector;
 import org.apache.mahout.math.Vector;
@@ -289,12 +292,48 @@ public class SGDClassification {
 		}
 	}
 
-	public int classify(SessionInfo session) {
-		Vector v = this.profileToVector(session);
-		return this.classify(v);
+	public List<SessionInfo> classify(List<SessionInfo> sessions) {
+		InfoOutputHelper.printInfo("Starting classification phase");
+		List<SessionInfo> buySessions = new ArrayList<SessionInfo>();
+
+		for (SessionInfo session : sessions) {
+			Vector v = this.profileToVector(session);
+			int estematedInt = this.classify(v);
+			SessionEventType estimated = SessionEventType.valueOf(estematedInt);
+
+			if (estimated == SessionEventType.BuyEvent) {
+				buySessions.add(session);
+			}
+		}
+
+		InfoOutputHelper.printInfo("Buy sessions: " + buySessions.size() + "/"
+				+ sessions.size());
+
+		return buySessions;
 	}
 
 	public List<SessionInfo> getBuySessions() {
 		return buySessions;
+	}
+
+	public void saveModel(String path) throws IOException {
+		if (this.learningAlgorithm.getBest() != null) {
+			ModelSerializer.writeBinary(path + "best.model",
+					this.learningAlgorithm.getBest().getPayload().getLearner());
+		}
+		ModelSerializer.writeBinary(path + "complete.model",
+				this.learningAlgorithm);
+
+	}
+
+	public void loadModel(String path) throws FileNotFoundException,
+			IOException {
+		this.learningAlgorithm = ModelSerializer.readBinary(
+				new FileInputStream(path + "complete.model"),
+				AdaptiveLogisticRegression.class);
+		this.model = ModelSerializer.readBinary(new FileInputStream(path
+				+ "best.model"), CrossFoldLearner.class);
+		this.learningAlgorithm.close();
+
 	}
 }

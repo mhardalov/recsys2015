@@ -7,7 +7,7 @@ import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.TimeZone;
 
-public class TimeStampHelpers {
+public class TimeStampHelper {
 	private static DateFormat df;
 	private static GregorianCalendar cal;
 
@@ -18,7 +18,7 @@ public class TimeStampHelpers {
 		cal = new GregorianCalendar(utc);
 	}
 	
-	private TimeStampHelpers() { };
+	private TimeStampHelper() { };
 	
 	public static Date parseDate(String input) throws ParseException {
 		cal.setTime(df.parse(input));

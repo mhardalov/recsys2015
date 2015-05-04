@@ -80,6 +80,9 @@ public class FilesParserHelper {
 	}
 
 	private void parseBuys() throws ParseException, IOException {
+		if (this.buysPath == "") {
+			return;
+		}
 		InputStream csvFilename = new FileInputStream(buysPath);
 
 		String[] row = null;
@@ -119,11 +122,16 @@ public class FilesParserHelper {
 
 		this.parseClicks();
 		if (!this.loadAllData) {
-			assert this.sessions.size() <= this.sessionsLimit * (1 + this.clicksRatio);
+			assert this.sessions.size() <= this.sessionsLimit
+					* (1 + this.clicksRatio);
 		}
-		
+
 		System.out.println();
 
 		return this.sessions;
+	}
+
+	public void dispose() {
+		this.sessions.clear();		
 	}
 }
