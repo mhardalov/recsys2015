@@ -2,13 +2,10 @@ package org.recsyschallenge.algorithms.recommender;
 
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Set;
 
 import org.apache.commons.lang.StringUtils;
 import org.apache.mahout.cf.taste.common.TasteException;
@@ -16,18 +13,19 @@ import org.apache.mahout.cf.taste.eval.RecommenderEvaluator;
 import org.apache.mahout.cf.taste.impl.common.FastByIDMap;
 import org.apache.mahout.cf.taste.impl.eval.RMSRecommenderEvaluator;
 import org.apache.mahout.cf.taste.impl.model.GenericDataModel;
-import org.apache.mahout.cf.taste.impl.model.GenericPreference;
-import org.apache.mahout.cf.taste.impl.model.GenericUserPreferenceArray;
 import org.apache.mahout.cf.taste.model.PreferenceArray;
 import org.apache.mahout.cf.taste.recommender.RecommendedItem;
 import org.apache.mahout.cf.taste.recommender.Recommender;
+import org.apache.spark.api.java.JavaRDD;
+import org.recsyschallenge.algorithms.helpers.ProgressMesurer;
 import org.recsyschallenge.helpers.InfoOutputHelper;
-import org.recsyschallenge.models.SessionClicks;
+import org.recsyschallenge.helpers.SparkHelper;
 import org.recsyschallenge.models.SessionInfo;
 
 public class UserBasedRecomender {
 	GenericDataModel dataModel;
-	Recommender recommender;
+	private static Recommender recommender;
+	List<SessionInfo> buySessions;
 
 	public UserBasedRecomender(List<SessionInfo> sessions,
 			List<SessionInfo> buySessions) throws IOException, TasteException {
@@ -36,121 +34,108 @@ public class UserBasedRecomender {
 		FastByIDMap<PreferenceArray> userData = new FastByIDMap<>();
 		// FastByIDMap<Long> timestamps = new FastByIDMap<>();
 
+		// JavaRDD<SessionInfo> rddSessions =
+		// SparkHelper.sc.parallelize(sessions);
+		// rddSessions.foreach(session -> userData.put(session.getSessionId(),
+		// session.toPreferenceArray()));
+		
+		ProgressMesurer mesurer = new ProgressMesurer(5, sessions.size());
+
 		for (SessionInfo session : sessions) {
-
-			if (session.getClicks().size() == 0) {
-				continue;
-			}
-
-			int userId = session.getSessionId();
-
-			List<GenericPreference> items = new ArrayList<>();
-			for (SessionClicks click : session.getClicks()) {
-				int itemId = click.getItemId();
-				items.add(new GenericPreference(userId, itemId,
-						(float) (session.isItemBought(itemId) ? 1 : 0)));
-			}
-
-			userData.put(userId, new GenericUserPreferenceArray(items));
+			userData.put(session.getSessionId(), session.toPreferenceArray());
+			mesurer.stepIt();
 		}
+
 		sessions.clear();
+		sessions = null;
 
-		for (SessionInfo session : buySessions) {
-			if (session.getClicks().size() == 0) {
-				continue;
-			}
+		this.buySessions = buySessions;
 
-			int userId = session.getSessionId();
+		// JavaRDD<SessionInfo> rddBuySessions = SparkHelper.sc
+		// .parallelize(buySessions);
+		// rddBuySessions.foreach(session ->
+		// userData.put(session.getSessionId(),
+		// session.toPreferenceArray()));
 
-			List<GenericPreference> items = new ArrayList<>();
-			for (SessionClicks click : session.getClicks()) {
-				int itemId = click.getItemId();
-				items.add(new GenericPreference(userId, itemId,
-						(float) (session.isItemBought(itemId) ? 1 : 0)));
-			}
+		for (SessionInfo session : this.buySessions) {
+			userData.put(session.getSessionId(), session.toPreferenceArray());
+		}
 
-			userData.put(userId, new GenericUserPreferenceArray(items));
-		}		
-		
 		dataModel = new GenericDataModel(userData);
-		
+
 		InfoOutputHelper.printInfo("Done building data model.");
-		
+
 		InfoOutputHelper.printInfo("Start building recommender.");
 
 		recommender = new UserBasedRecomenderBuilder()
 				.buildRecommender(dataModel);
 
 		InfoOutputHelper.printInfo("Done building recommender.");
-//		RecommenderEvaluator evaluator = new RMSRecommenderEvaluator();
-//		double score = evaluator.evaluate(new UserBasedRecomenderBuilder(),
-//				null, dataModel, 0.9, 0.1);
-//		InfoOutputHelper.printInfo("Recommender RMS: " + score);
+
 	}
 
-	public List<RecommendedItem> recommendUser(long userId, int howMany)
-			throws TasteException {
-		List<RecommendedItem> recommended = recommender.recommend(userId,
-				howMany, true);
-
-		return recommended;
+	public void evalute() throws TasteException {
+		RecommenderEvaluator evaluator = new RMSRecommenderEvaluator();
+		double score = evaluator.evaluate(new UserBasedRecomenderBuilder(),
+				null, dataModel, 0.9, 0.1);
+		InfoOutputHelper.printInfo("Recommender RMS: " + score);
 	}
 
-	public Map<Integer, Set<Integer>> getUserIntersect(
-			List<SessionInfo> buySessions) throws TasteException {
+	public Map<Integer, List<Integer>> getUserIntersect() throws TasteException {
 		InfoOutputHelper.printInfo("Starting recommendation phase");
 
-		Map<Integer, Set<Integer>> intersect = new HashMap<Integer, Set<Integer>>();
+		Map<Integer, List<Integer>> intersect = new HashMap<Integer, List<Integer>>();
 
-		// TODO: optimize
-		int i = 0;
-		int perc = 5;
-		int clickCount = buySessions.size();
-		for (SessionInfo session : buySessions) {
+		JavaRDD<SessionInfo> rddBuySessions = SparkHelper.sc
+				.parallelize(buySessions);
+
+		ProgressMesurer progress = new ProgressMesurer(2,
+				rddBuySessions.count());
+
+		rddBuySessions.foreach(session -> {
 			int sessionId = session.getSessionId();
-
-			List<RecommendedItem> recommendations = this.recommendUser(
-					sessionId, 20);
-
-			for (SessionClicks click : session.getClicks()) {
-				int clickItemId = click.getItemId();
-
-				for (RecommendedItem item : recommendations) {
-					if (item.getValue() > 0 && item.getItemID() == clickItemId) {
-						Set<Integer> boughtItems = intersect.get(clickItemId);
-						if (boughtItems == null) {
-							boughtItems = new HashSet<Integer>();
-						}
-
-						boughtItems.add(clickItemId);
-						intersect.put(sessionId, boughtItems);
-
-						break;
-					}
-				}
+			List<RecommendedItem> recommendations = recommender.recommend(
+					sessionId, 20, true);
+			List<Integer> items = session.getRecIntersect(recommendations);
+			if (items != null) {
+				intersect.put(sessionId, items);
 			}
-			i++;
+			progress.stepIt();
+		});
 
-			if ((int) (((float) i / clickCount) * 100) == perc) {
-				InfoOutputHelper.printInfo(perc + "% done");
-				perc += 5;
-			}
-		}
+//		int i = 0;
+//		int perc = 5;
+//		int clickCount = buySessions.size();
+//		for (SessionInfo session : buySessions) {
+//			int sessionId = session.getSessionId();
+//			List<RecommendedItem> recommendations = UserBasedRecomender.recommender.recommend(
+//					sessionId, 20, true);
+//			List<Integer> items = session.getRecIntersect(recommendations);
+//			if (items != null) {
+//				intersect.put(sessionId, items);
+//			}
+//			i++;
+//
+//			if ((int) (((float) i / clickCount) * 100) == perc) {
+//				InfoOutputHelper.printInfo(perc + "% done");
+//				perc += 5;
+//			}
+//		}
 
 		return intersect;
 	}
 
 	public void exportToFile(String filePath,
-			Map<Integer, Set<Integer>> buySessions) throws IOException {
+			Map<Integer, List<Integer>> buySessions) throws IOException {
 		InfoOutputHelper.printInfo("Starting export phase");
 
 		PrintWriter writer = new PrintWriter(filePath, "UTF-8");
 		try {
 			// File format is sessionId;boughtItem1,....,boughtItemN
-			for (Entry<Integer, Set<Integer>> buySession : buySessions
+			for (Entry<Integer, List<Integer>> buySession : buySessions
 					.entrySet()) {
 				String line = buySession.getKey() + ";";
-				Set<Integer> buyItems = buySession.getValue();
+				List<Integer> buyItems = buySession.getValue();
 
 				Integer[] items = new Integer[buyItems.size()];
 

@@ -1,15 +1,23 @@
 package org.recsyschallenge.models;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.mahout.cf.taste.impl.model.GenericPreference;
+import org.apache.mahout.cf.taste.impl.model.GenericUserPreferenceArray;
+import org.apache.mahout.cf.taste.recommender.RecommendedItem;
 import org.recsyschallenge.algorithms.enums.SessionEventType;
 
-public class SessionInfo {
+public class SessionInfo implements Serializable {
 
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = 4097902057395609332L;
 	private final int sessionId;
 	private List<SessionBuys> buys;
 	private List<SessionClicks> clicks;
@@ -51,15 +59,15 @@ public class SessionInfo {
 		for (SessionClicks click : this.clicks) {
 			String category = click.getCategory();
 
-//			if (category != "0") {
-//				continue;
-//			}
+			// if (category != "0") {
+			// continue;
+			// }
 
 			// TODO: validate
 			// If it is product name then we transfer it to "product" feature
-//			if (category.length() > 3) {
-//				category = "product";
-//			}
+			// if (category.length() > 3) {
+			// category = "product";
+			// }
 
 			Integer count = clickedItems.get(category);
 
@@ -79,7 +87,8 @@ public class SessionInfo {
 		Date firstClick = this.clicks.get(0).getTimestamp();
 		Date lastClick = this.clicks.get(this.clicks.size() - 1).getTimestamp();
 
-		return Math.log(1 + lastClick.getTime() - firstClick.getTime()) / clickSize;
+		return Math.log(1 + lastClick.getTime() - firstClick.getTime())
+				/ clickSize;
 	}
 
 	public double getAvgSessionLength() {
@@ -119,5 +128,41 @@ public class SessionInfo {
 		}
 
 		return result;
+	}
+
+	public GenericUserPreferenceArray toPreferenceArray() {
+		int userId = this.getSessionId();
+
+		List<GenericPreference> items = new ArrayList<>();
+		for (SessionClicks click : this.getClicks()) {
+			int itemId = click.getItemId();
+			items.add(new GenericPreference(userId, itemId, (this
+					.isItemBought(itemId) ? 1.0f : 0.0f)));
+		}
+		return new GenericUserPreferenceArray(items);
+	}
+
+	public List<Integer> getRecIntersect(List<RecommendedItem> recommendations) {
+		int threshold = 0;
+
+		List<Integer> boughtItems = null;
+		for (SessionClicks click : this.getClicks()) {
+			int clickItemId = click.getItemId();
+
+			for (RecommendedItem item : recommendations) {
+				if (item.getValue() > threshold
+						&& item.getItemID() == clickItemId) {
+					if (boughtItems == null) {
+						boughtItems = new ArrayList<Integer>();
+					}
+
+					boughtItems.add(clickItemId);
+
+					break;
+				}
+			}
+		}
+
+		return boughtItems;
 	}
 }

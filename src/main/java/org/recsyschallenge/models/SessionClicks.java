@@ -1,15 +1,20 @@
 package org.recsyschallenge.models;
 
+import java.io.Serializable;
 import java.text.ParseException;
 import java.util.Date;
 
 import org.recsyschallenge.helpers.TimeStampHelper;
 
-public class SessionClicks {	
+public class SessionClicks implements Serializable {
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = 1122601273559521421L;
 	private final int sessionID;
 	private final Date timestamp;
 	private final int itemId;
-	private final String category;	
+	private final String category;
 
 	public SessionClicks(String[] row) throws ParseException {
 		this.sessionID = Integer.parseInt(row[0]);
@@ -24,7 +29,7 @@ public class SessionClicks {
 		hash = hash * 31 + getTimestamp().hashCode();
 		hash = hash * 31 + getItemId();
 		hash = hash * 31 + getCategory().hashCode();
-		
+
 		return hash;
 	}
 
@@ -42,7 +47,7 @@ public class SessionClicks {
 		if (this.getItemId() != other.getItemId())
 			return false;
 		if (!this.getCategory().equals(other.getCategory()))
-			return false;		
+			return false;
 
 		return true;
 	}
@@ -62,7 +67,7 @@ public class SessionClicks {
 	public String getCategory() {
 		return category;
 	}
-	
+
 	public String toString() {
 		return this.sessionID + "," + this.itemId + "," + this.category + ",";
 	}

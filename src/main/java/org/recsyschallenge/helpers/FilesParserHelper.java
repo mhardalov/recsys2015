@@ -132,6 +132,7 @@ public class FilesParserHelper {
 	}
 
 	public void dispose() {
-		this.sessions.clear();		
+		this.sessions.clear();
+		this.sessions = null;
 	}
 }

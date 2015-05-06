@@ -1,11 +1,16 @@
 package org.recsyschallenge.models;
 
+import java.io.Serializable;
 import java.text.ParseException;
 import java.util.Date;
 
 import org.recsyschallenge.helpers.TimeStampHelper;
 
-public class SessionBuys {
+public class SessionBuys implements Serializable {
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = -3015150074325523361L;
 	private final int sessionID;
 	private final Date timestamp;
 	private final int itemId;
