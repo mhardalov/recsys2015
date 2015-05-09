@@ -24,8 +24,8 @@ public class ProgressMesurer implements Serializable {
 	}
 
 	private long getPercentDone(boolean increase) {
-		long currProg = increase ? currentProgress.getAndIncrement()
-				: currentProgress.get();
+		long currProg = (increase ? currentProgress.incrementAndGet()
+				: currentProgress.get());
 
 		return (long) (((float) currProg / maxSteps) * 100);
 	}

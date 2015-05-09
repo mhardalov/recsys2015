@@ -10,6 +10,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.apache.commons.cli.BasicParser;
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.OptionBuilder;
+import org.apache.commons.cli.Options;
 import org.apache.mahout.cf.taste.common.TasteException;
 import org.apache.mahout.cf.taste.impl.common.FastByIDMap;
 import org.apache.mahout.cf.taste.model.PreferenceArray;
@@ -23,12 +29,12 @@ import org.recsyschallenge.models.SessionInfo;
 
 public class RecSysMain {
 
-	private static final float ratio = (float) 5;
-	private static final String TEST_PATH = "/media/ramdisk/yoochoose-test.dat";
-	private static final String CLICKS_PATH = "/media/ramdisk/yoochoose-clicks.dat";
-	private static final String BUYS_PATH = "/media/ramdisk/yoochoose-buys.dat";
-	private static final String OUTPUT_PATH = "/home/momchil/Desktop/RecSys/output/yoochoose.output";
-	private static final String MODEL_PATH = "/home/momchil/Desktop/RecSys/models/";
+	// -XX:+UseParallelGC -XX:+UseParallelOldGC
+	private static final float ratio = (float) 8;
+	private static final String TEST_FILE = "yoochoose-test.dat";
+	private static final String CLICKS_FILE = "yoochoose-clicks.dat";
+	private static final String BUYS_FILE = "yoochoose-buys.dat";
+	private static final String OUTPUT_FILE = "yoochoose.output";
 
 	private static SGDClassification getClassifier() {
 		return new SGDClassification(8000, 5000);
@@ -42,11 +48,12 @@ public class RecSysMain {
 		return classification;
 	}
 
-	private SGDClassification trainClassifier() throws ParseException,
+	private SGDClassification trainClassifier(String clicksFile,
+			String buysFile, String modelFile) throws ParseException,
 			IOException {
 		// Max buys 509696
-		FilesParserHelper parser = FilesParserHelper.newInstance(CLICKS_PATH,
-				BUYS_PATH, 509696, ratio);
+		FilesParserHelper parser = FilesParserHelper.newInstance(clicksFile,
+				buysFile, 509696, ratio);
 
 		Map<Integer, SessionInfo> sessions;
 		List<SessionInfo> sessionsList;
@@ -74,7 +81,7 @@ public class RecSysMain {
 		classification.train(train);
 		testClassifier(classification, test);
 		dissectClassifier(classification, sessionsList);
-		saveModel(classification, MODEL_PATH);
+		saveModel(classification, modelFile);
 
 		return classification;
 	}
@@ -122,14 +129,14 @@ public class RecSysMain {
 	}
 
 	private static UserBasedRecomender getRecommender(
-			List<SessionInfo> buySessions) throws IOException, TasteException,
-			ParseException {
+			List<SessionInfo> buySessions, String clicksPath, String buysPath)
+			throws IOException, TasteException, ParseException {
 
 		Map<Integer, SessionInfo> trainSessions;
 		List<SessionInfo> trainSessionsList;
 
 		FilesParserHelper trainParser = FilesParserHelper.newInstance(
-				CLICKS_PATH, BUYS_PATH, 509696, 6);
+				clicksPath, buysPath, 509696, ratio);
 
 		try {
 
@@ -137,7 +144,7 @@ public class RecSysMain {
 			trainSessionsList = new ArrayList<SessionInfo>(
 					trainSessions.values());
 
-//			trainSessions.clear();			
+			// trainSessions.clear();
 
 			int sessionsSize = trainSessionsList.size();
 			InfoOutputHelper.printInfo("Parsed sessions: "
@@ -159,18 +166,64 @@ public class RecSysMain {
 		classification.saveModel(modelPath);
 	}
 
+	private static void initSparkContext(long cores) {
+		SparkHelper.initSparkContext(cores);
+	}
+
+	@SuppressWarnings("static-access")
+	private static CommandLine parseCLI(String[] args) {
+		Option dataDir = OptionBuilder.withArgName("dataDir").hasArg()
+				.withDescription("use given file for log").create("dataDir");
+
+		Option modelDir = OptionBuilder.withArgName("modelDir").hasArg()
+				.withDescription("use given file for log").create("modelDir");
+
+		Option outputDir = OptionBuilder.withArgName("outputDir").hasArg()
+				.withDescription("use given file for log").create("outputDir");
+
+		Option cores = OptionBuilder.withArgName("cores").hasArg()
+				.withDescription("the class which it to perform " + "logging")
+				.create("cores");
+		Options options = new Options();
+
+		options.addOption(dataDir);
+		options.addOption(modelDir);
+		options.addOption(outputDir);
+		options.addOption(cores);
+
+		// create the parser
+		CommandLineParser parser = new BasicParser();
+		try {
+			// parse the command line arguments
+			CommandLine line = parser.parse(options, args);
+
+			return line;
+		} catch (org.apache.commons.cli.ParseException exp) {
+			// oops, something went wrong
+			System.err.println("Parsing failed.  Reason: " + exp.getMessage());
+			return null;
+		}
+	}
+
 	public static void main(String[] args) throws Exception {
+		CommandLine line = parseCLI(args);
+		String dataDir = line.getOptionValue("dataDir");
+		String modelDir = line.getOptionValue("modelDir");
+		String outputDir = line.getOptionValue("outputDir");
+		long cores = Long.parseLong(line.getOptionValue("cores"));
+		initSparkContext(cores);
 
-		SGDClassification classification = loadModelFromFile(MODEL_PATH);
+		SGDClassification classification = loadModelFromFile(modelDir);
 
-		List<SessionInfo> buySessions = classifySessions(TEST_PATH,
+		List<SessionInfo> buySessions = classifySessions(dataDir + TEST_FILE,
 				classification);
 
-		UserBasedRecomender recommender = getRecommender(buySessions);
+		UserBasedRecomender recommender = getRecommender(buySessions, dataDir
+				+ CLICKS_FILE, dataDir + BUYS_FILE);
 
 		Map<Integer, List<Integer>> buySessionInfo = recommender
 				.getUserIntersect();
-		recommender.exportToFile(OUTPUT_PATH, buySessionInfo);
+		recommender.exportToFile(outputDir + OUTPUT_FILE, buySessionInfo);
 
 		buySessions.clear();
 		buySessions = null;

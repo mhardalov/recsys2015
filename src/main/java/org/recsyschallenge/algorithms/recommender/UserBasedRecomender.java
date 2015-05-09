@@ -23,9 +23,13 @@ import org.recsyschallenge.helpers.SparkHelper;
 import org.recsyschallenge.models.SessionInfo;
 
 public class UserBasedRecomender {
-	GenericDataModel dataModel;
+	private GenericDataModel dataModel;
+	private List<SessionInfo> buySessions;
+
+	// must be static for spark task
 	private static Recommender recommender;
-	List<SessionInfo> buySessions;
+	private static Map<Integer, List<Integer>> intersect = new HashMap<Integer, List<Integer>>();
+	private static ProgressMesurer progress;
 
 	public UserBasedRecomender(List<SessionInfo> sessions,
 			List<SessionInfo> buySessions) throws IOException, TasteException {
@@ -38,12 +42,12 @@ public class UserBasedRecomender {
 		// SparkHelper.sc.parallelize(sessions);
 		// rddSessions.foreach(session -> userData.put(session.getSessionId(),
 		// session.toPreferenceArray()));
-		
-		ProgressMesurer mesurer = new ProgressMesurer(5, sessions.size());
+
+		progress = new ProgressMesurer(5, sessions.size());
 
 		for (SessionInfo session : sessions) {
 			userData.put(session.getSessionId(), session.toPreferenceArray());
-			mesurer.stepIt();
+			progress.stepIt();
 		}
 
 		sessions.clear();
@@ -84,13 +88,12 @@ public class UserBasedRecomender {
 	public Map<Integer, List<Integer>> getUserIntersect() throws TasteException {
 		InfoOutputHelper.printInfo("Starting recommendation phase");
 
-		Map<Integer, List<Integer>> intersect = new HashMap<Integer, List<Integer>>();
-
 		JavaRDD<SessionInfo> rddBuySessions = SparkHelper.sc
 				.parallelize(buySessions);
 
-		ProgressMesurer progress = new ProgressMesurer(2,
-				rddBuySessions.count());
+		final long sessionCount = rddBuySessions.count();
+
+		progress = new ProgressMesurer(5, sessionCount);
 
 		rddBuySessions.foreach(session -> {
 			int sessionId = session.getSessionId();
@@ -100,27 +103,9 @@ public class UserBasedRecomender {
 			if (items != null) {
 				intersect.put(sessionId, items);
 			}
+
 			progress.stepIt();
 		});
-
-//		int i = 0;
-//		int perc = 5;
-//		int clickCount = buySessions.size();
-//		for (SessionInfo session : buySessions) {
-//			int sessionId = session.getSessionId();
-//			List<RecommendedItem> recommendations = UserBasedRecomender.recommender.recommend(
-//					sessionId, 20, true);
-//			List<Integer> items = session.getRecIntersect(recommendations);
-//			if (items != null) {
-//				intersect.put(sessionId, items);
-//			}
-//			i++;
-//
-//			if ((int) (((float) i / clickCount) * 100) == perc) {
-//				InfoOutputHelper.printInfo(perc + "% done");
-//				perc += 5;
-//			}
-//		}
 
 		return intersect;
 	}

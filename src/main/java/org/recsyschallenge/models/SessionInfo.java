@@ -137,13 +137,13 @@ public class SessionInfo implements Serializable {
 		for (SessionClicks click : this.getClicks()) {
 			int itemId = click.getItemId();
 			items.add(new GenericPreference(userId, itemId, (this
-					.isItemBought(itemId) ? 1.0f : 0.0f)));
+					.isItemBought(itemId) ? 1.0f : 0.5f)));
 		}
 		return new GenericUserPreferenceArray(items);
 	}
 
 	public List<Integer> getRecIntersect(List<RecommendedItem> recommendations) {
-		int threshold = 0;
+		float threshold = 0.5f;
 
 		List<Integer> boughtItems = null;
 		for (SessionClicks click : this.getClicks()) {
