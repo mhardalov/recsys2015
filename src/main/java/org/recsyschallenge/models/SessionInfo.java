@@ -18,6 +18,8 @@ public class SessionInfo implements Serializable {
 	 * 
 	 */
 	private static final long serialVersionUID = 4097902057395609332L;
+	private static final float threshold = 0.0f;
+	
 	private final int sessionId;
 	private List<SessionBuys> buys;
 	private List<SessionClicks> clicks;
@@ -137,13 +139,13 @@ public class SessionInfo implements Serializable {
 		for (SessionClicks click : this.getClicks()) {
 			int itemId = click.getItemId();
 			items.add(new GenericPreference(userId, itemId, (this
-					.isItemBought(itemId) ? 1.0f : 0.5f)));
+					.isItemBought(itemId) ? 1.0f : 0.0f)));
 		}
 		return new GenericUserPreferenceArray(items);
 	}
 
 	public List<Integer> getRecIntersect(List<RecommendedItem> recommendations) {
-		float threshold = 0.5f;
+		
 
 		List<Integer> boughtItems = null;
 		for (SessionClicks click : this.getClicks()) {
