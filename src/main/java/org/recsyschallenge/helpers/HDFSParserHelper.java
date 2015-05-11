@@ -1,104 +1,138 @@
 package org.recsyschallenge.helpers;
 
 import java.io.IOException;
-import java.util.Iterator;
+import java.io.Serializable;
+import java.text.ParseException;
+import java.util.HashMap;
+import java.util.Map;
 
-import org.apache.commons.csv.CSVParser;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FSDataInputStream;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.IntWritable;
-import org.apache.hadoop.io.LongWritable;
-import org.apache.hadoop.io.Text;
-import org.apache.hadoop.mapred.FileInputFormat;
-import org.apache.hadoop.mapred.FileOutputFormat;
-import org.apache.hadoop.mapred.JobClient;
-import org.apache.hadoop.mapred.JobConf;
-import org.apache.hadoop.mapred.Mapper;
-import org.apache.hadoop.mapred.OutputCollector;
-import org.apache.hadoop.mapred.Reducer;
-import org.apache.hadoop.mapred.Reporter;
+import org.apache.spark.api.java.JavaPairRDD;
+import org.apache.spark.api.java.JavaRDD;
+import org.recsyschallenge.models.SessionBuys;
+import org.recsyschallenge.models.SessionClicks;
+import org.recsyschallenge.models.SessionInfo;
 
-public class HDFSParserHelper {
-	public static class TokenizerMapper implements
-			Mapper<LongWritable, Text, Text, IntWritable> {
+import scala.Tuple2;
 
-		@Override
-		public void configure(JobConf job) {
-			// TODO Auto-generated method stub
+public class HDFSParserHelper implements Serializable {
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = 3478741054506932870L;
+	private final String clicksPath;
+	private final String buysPath;
 
-		}
+	private static Map<Integer, SessionInfo> sessions;
+	private final long sessionsLimit;
+	private final boolean loadAllData;
+	private final float clicksRatio;
 
-		@Override
-		public void close() throws IOException {
-			// TODO Auto-generated method stub
+	public static HDFSParserHelper newInstance(String clicksPath,
+			String buysPath) {
+		return new HDFSParserHelper(clicksPath, buysPath, 0, 1);
+	}
 
-		}
+	public static HDFSParserHelper newInstance(String clicksPath,
+			String buysPath, long sessionsLimit, float clicksRatio) {
+		return new HDFSParserHelper(clicksPath, buysPath, sessionsLimit,
+				clicksRatio);
+	}
 
-		@Override
-		public void map(LongWritable key, Text value,
-				OutputCollector<Text, IntWritable> output, Reporter reporter)
-				throws IOException {
-			if (key.get() > 0) {
+	private HDFSParserHelper(String clicksPath, String buysPath,
+			long sessionsLimit, float clicksRatio) {
+		this.clicksPath = clicksPath;
+		this.buysPath = buysPath;
+		this.sessionsLimit = sessionsLimit;
+		this.loadAllData = (sessionsLimit <= 0);
+		HDFSParserHelper.sessions = new HashMap<Integer, SessionInfo>();
+		this.clicksRatio = clicksRatio;
+	}
 
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	private void parseClicks() throws IOException, ParseException {
+		JavaRDD<String> lines = SparkHelper.sc
+				.textFile("hdfs://localhost:9000/recsys/RecSys/yoochoose-clicks.dat");
+
+		JavaPairRDD<Integer, SessionClicks> clicks = lines.mapToPair(s -> {
+			String[] row = s.split(",");
+			int sessionId = Integer.valueOf(row[0]);
+			SessionClicks click = new SessionClicks(row);
+
+			return new Tuple2(sessionId, click);
+		});
+
+		JavaPairRDD<Integer, Iterable<SessionClicks>> groupSessions = clicks
+				.distinct().groupByKey();
+
+		groupSessions.foreach(sessionTuple -> {
+			int sessionId = sessionTuple._1();
+
+			SessionInfo session = sessions.get(sessionId);
+			if (session == null) {
+				session = new SessionInfo(sessionId);
+			}
+			for (SessionClicks click : sessionTuple._2) {
+				session.addClick(click);
 			}
 
-		}
+			sessions.put(sessionId, session);
+
+		});
 	}
 
-	public static class IntSumReducer implements
-			Reducer<Text, IntWritable, Text, IntWritable> {
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	private void parseBuys() {
+		JavaRDD<String> lines = SparkHelper.sc
+				.textFile("hdfs://localhost:9000/recsys/RecSys/yoochoose-buys.dat");
 
-		private IntWritable result = new IntWritable();
-		private int sum;
+		JavaPairRDD<Integer, SessionBuys> buys = lines.mapToPair(s -> {
+			SessionBuys buy = new SessionBuys(s.split(","));
+			return new Tuple2(buy.getSessionID(), buy);
+		});
 
-		@Override
-		public void configure(JobConf job) {
-			// TODO Auto-generated method stub
+		JavaPairRDD<Integer, Iterable<SessionBuys>> groupSessions = buys
+				.distinct().groupByKey();
 
-		}
+		groupSessions.foreach(sessionTuple -> {
+			int sessionId = sessionTuple._1();
 
-		@Override
-		public void close() throws IOException {
-			// TODO Auto-generated method stub
+			SessionInfo session = sessions.get(sessionId);
+			if (session == null) {
+				session = new SessionInfo(sessionId);
+			}
+			for (SessionBuys click : sessionTuple._2) {
+				session.addBuy(click);
+			}
 
-		}
+			sessions.put(sessionId, session);
 
-		@Override
-		public void reduce(Text key, Iterator<IntWritable> values,
-				OutputCollector<Text, IntWritable> output, Reporter reporter)
-				throws IOException {
-			sum = 0;
-
-		}
+		});
 	}
 
-	public HDFSParserHelper() throws IOException {
-		Configuration conf = new Configuration();
-		conf.addResource(new Path(
-				"/home/momchil/Desktop/cluster/hadoop-2.4.1/hadoop/etc/core-site.xml"));
-		conf.addResource(new Path(
-				"/home/momchil/Desktop/cluster/hadoop-2.4.1/hadoop/etc/hdfs-site.xml"));
+	public Map<Integer, SessionInfo> parseSessions() throws ParseException,
+			IOException {
+		InfoOutputHelper.printInfo("Starting parse phase");
 
-		FileSystem fs = FileSystem.get(conf);
-//		FSDataInputStream inputStream = fs.open(new Path(
-//				"/recsys/yoochoose-buys.dat"));
+		this.parseBuys();
+		if (!this.loadAllData) {
+			assert HDFSParserHelper.sessions.size() <= this.sessionsLimit;
+		}
 
-//		conf.setBoolean("mapreduce.input.fileinputformat.input.dir.recursive", true);
-		JobConf job = new JobConf(conf);
-		job.setMapperClass(TokenizerMapper.class);
-		job.setCombinerClass(IntSumReducer.class);
-		job.setReducerClass(IntSumReducer.class);
-		job.setOutputKeyClass(Text.class);
-		job.setOutputValueClass(IntWritable.class);
-		
-		FileInputFormat.addInputPath(job,
-				new Path("hdfs://localhost:9000/recsys/RecSys."));
-		FileOutputFormat.setOutputPath(job,
-				new Path("hdfs://localhost:9000/recsys/RecSys/tmp"));
-		
-		JobClient.runJob(job);
+		this.parseClicks();
+		if (!this.loadAllData) {
+			assert HDFSParserHelper.sessions.size() <= this.sessionsLimit
+					* (1 + this.clicksRatio);
+		}
+
+		// 9619219
+		System.out.println();
+
+		return HDFSParserHelper.sessions;
 	}
 
+	public void dispose() {
+		HDFSParserHelper.sessions.clear();
+		HDFSParserHelper.sessions = null;
+	}
+	// hdfs://localhost:9000/recsys/RecSys/
 }
