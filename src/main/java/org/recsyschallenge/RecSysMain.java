@@ -6,13 +6,9 @@ import java.security.SecureRandom;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
-import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Set;
-import java.util.TreeMap;
 
 import org.apache.commons.cli.BasicParser;
 import org.apache.commons.cli.CommandLine;
@@ -21,16 +17,11 @@ import org.apache.commons.cli.Option;
 import org.apache.commons.cli.OptionBuilder;
 import org.apache.commons.cli.Options;
 import org.apache.mahout.cf.taste.common.TasteException;
-import org.apache.mahout.cf.taste.impl.common.FastByIDMap;
-import org.apache.mahout.cf.taste.model.PreferenceArray;
-import org.apache.spark.api.java.JavaRDD;
 import org.recsyschallenge.algorithms.classification.SGDClassification;
 import org.recsyschallenge.algorithms.recommender.UserBasedRecomender;
 import org.recsyschallenge.helpers.FilesParserHelper;
-import org.recsyschallenge.helpers.HDFSParserHelper;
 import org.recsyschallenge.helpers.InfoOutputHelper;
 import org.recsyschallenge.helpers.SparkHelper;
-import org.recsyschallenge.helpers.ValueComparator;
 import org.recsyschallenge.models.SessionInfo;
 
 public class RecSysMain {
