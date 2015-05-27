@@ -18,8 +18,8 @@ public class SessionInfo implements Serializable {
 	 * 
 	 */
 	private static final long serialVersionUID = 4097902057395609332L;
-	private static final float threshold = 0.0f;
-	
+	private static final float threshold = 4.0f;
+
 	private final int sessionId;
 	private List<SessionBuys> buys;
 	private List<SessionClicks> clicks;
@@ -89,8 +89,8 @@ public class SessionInfo implements Serializable {
 		Date firstClick = this.clicks.get(0).getTimestamp();
 		Date lastClick = this.clicks.get(this.clicks.size() - 1).getTimestamp();
 
-		return Math.log(1 + lastClick.getTime() - firstClick.getTime())
-				/ clickSize;
+		return Math.log(1 + lastClick.getTime() - firstClick.getTime()
+				/ clickSize);
 	}
 
 	public double getAvgSessionLength() {
@@ -101,7 +101,7 @@ public class SessionInfo implements Serializable {
 			avg += click.getTimestamp().getTime();
 		}
 
-		return Math.log(1 + avg) / clickSize;
+		return Math.log(1 + avg / clickSize);
 	}
 
 	public boolean isItemBought(int itemId) {
@@ -145,7 +145,6 @@ public class SessionInfo implements Serializable {
 	}
 
 	public List<Integer> getRecIntersect(List<RecommendedItem> recommendations) {
-		
 
 		List<Integer> boughtItems = null;
 		for (SessionClicks click : this.getClicks()) {

@@ -2,6 +2,7 @@ package org.recsyschallenge.algorithms.recommender;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,12 +15,12 @@ import org.apache.mahout.cf.taste.impl.common.FastByIDMap;
 import org.apache.mahout.cf.taste.impl.eval.RMSRecommenderEvaluator;
 import org.apache.mahout.cf.taste.impl.model.GenericDataModel;
 import org.apache.mahout.cf.taste.model.PreferenceArray;
-import org.apache.mahout.cf.taste.recommender.RecommendedItem;
 import org.apache.mahout.cf.taste.recommender.Recommender;
 import org.apache.spark.api.java.JavaRDD;
 import org.recsyschallenge.algorithms.helpers.ProgressMesurer;
 import org.recsyschallenge.helpers.InfoOutputHelper;
 import org.recsyschallenge.helpers.SparkHelper;
+import org.recsyschallenge.models.SessionClicks;
 import org.recsyschallenge.models.SessionInfo;
 
 public class UserBasedRecomender {
@@ -36,7 +37,7 @@ public class UserBasedRecomender {
 		InfoOutputHelper.printInfo("Starting building recommendation phase");
 
 		FastByIDMap<PreferenceArray> userData = new FastByIDMap<>();
-		// FastByIDMap<Long> timestamps = new FastByIDMap<>();
+		FastByIDMap<FastByIDMap<Long>> timestamps = new FastByIDMap<>();
 
 		// JavaRDD<SessionInfo> rddSessions =
 		// SparkHelper.sc.parallelize(sessions);
@@ -46,7 +47,15 @@ public class UserBasedRecomender {
 		progress = new ProgressMesurer(5, sessions.size());
 
 		for (SessionInfo session : sessions) {
-			userData.put(session.getSessionId(), session.toPreferenceArray());
+			int sessionId = session.getSessionId();
+
+			userData.put(sessionId, session.toPreferenceArray());
+			FastByIDMap<Long> itemTimestamps = new FastByIDMap<>();
+			for (SessionClicks click : session.getClicks()) {
+				itemTimestamps.put(click.getItemId(), click.getTimestamp()
+						.getTime());
+				timestamps.put(sessionId, itemTimestamps);
+			}
 			progress.stepIt();
 		}
 
@@ -62,10 +71,18 @@ public class UserBasedRecomender {
 		// session.toPreferenceArray()));
 
 		for (SessionInfo session : this.buySessions) {
-			userData.put(session.getSessionId(), session.toPreferenceArray());
+			int sessionId = session.getSessionId();
+
+			userData.put(sessionId, session.toPreferenceArray());
+			FastByIDMap<Long> itemTimestamps = new FastByIDMap<>();
+			for (SessionClicks click : session.getClicks()) {
+				itemTimestamps.put(click.getItemId(), click.getTimestamp()
+						.getTime());
+				timestamps.put(sessionId, itemTimestamps);
+			}
 		}
 
-		dataModel = new GenericDataModel(userData);
+		dataModel = new GenericDataModel(userData, timestamps);
 
 		InfoOutputHelper.printInfo("Done building data model.");
 
@@ -81,7 +98,7 @@ public class UserBasedRecomender {
 	public void evalute() throws TasteException {
 		RecommenderEvaluator evaluator = new RMSRecommenderEvaluator();
 		double score = evaluator.evaluate(new UserBasedRecomenderBuilder(),
-				null, dataModel, 0.9, 0.1);
+				null, dataModel, 0.8, 0.2);
 		InfoOutputHelper.printInfo("Recommender RMS: " + score);
 	}
 
@@ -92,20 +109,39 @@ public class UserBasedRecomender {
 				.parallelize(buySessions);
 
 		final long sessionCount = rddBuySessions.count();
-
+		final float threshold = 3.5f;
 		progress = new ProgressMesurer(5, sessionCount);
 
 		rddBuySessions.foreach(session -> {
 			int sessionId = session.getSessionId();
-			List<RecommendedItem> recommendations = recommender.recommend(
-					sessionId, 20, true);
-			List<Integer> items = session.getRecIntersect(recommendations);
-			if (items != null) {
-				intersect.put(sessionId, items);
+
+			List<Integer> boughtItems = session.getRecIntersect(recommender
+					.recommend(sessionId, 100, true));
+
+			if (boughtItems != null) {
+				intersect.put(sessionId, boughtItems);
 			}
 
-			progress.stepIt();
-		});
+			// for (SessionClicks click : session.getClicks()) {
+			// int itemId = click.getItemId();
+			// float score = recommender.estimatePreference(sessionId,
+			// itemId);
+			//
+			// if (Float.compare(score, threshold) > 0) {
+			// List<Integer> boughtItems = intersect.get(sessionId);
+			// if (boughtItems == null) {
+			// boughtItems = new ArrayList<Integer>();
+			// }
+			// boughtItems.add(itemId);
+			// System.out.printf("Session %d Item %d score %f\n",
+			// sessionId, itemId, score);
+			//
+			// intersect.put(sessionId, boughtItems);
+			// }
+			// }
+
+				progress.stepIt();
+			});
 
 		return intersect;
 	}

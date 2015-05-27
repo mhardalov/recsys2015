@@ -12,13 +12,20 @@ public class SessionClicks implements Serializable {
 	 */
 	private static final long serialVersionUID = 1122601273559521421L;
 	private final int sessionID;
-	private final Date timestamp;
+	private Date timestamp;
 	private final int itemId;
 	private final String category;
 
 	public SessionClicks(String[] row) throws ParseException {
 		this.sessionID = Integer.parseInt(row[0]);
-		this.timestamp = TimeStampHelper.parseDate(row[1]);
+		String date = row[1];
+		try {
+			this.timestamp = TimeStampHelper.parseDate(date);
+		} catch (Exception e) {
+			e.toString();
+			this.timestamp = new Date();
+		}
+		
 		this.itemId = Integer.parseInt(row[2]);
 		this.category = row[3];
 	}

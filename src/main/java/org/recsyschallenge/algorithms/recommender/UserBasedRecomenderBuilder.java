@@ -3,6 +3,7 @@ package org.recsyschallenge.algorithms.recommender;
 import org.apache.mahout.cf.taste.common.TasteException;
 import org.apache.mahout.cf.taste.eval.RecommenderBuilder;
 import org.apache.mahout.cf.taste.impl.recommender.svd.Factorizer;
+import org.apache.mahout.cf.taste.impl.recommender.svd.ParallelSGDFactorizer;
 import org.apache.mahout.cf.taste.impl.recommender.svd.SVDPlusPlusFactorizer;
 import org.apache.mahout.cf.taste.impl.recommender.svd.SVDRecommender;
 import org.apache.mahout.cf.taste.model.DataModel;
@@ -14,7 +15,7 @@ public class UserBasedRecomenderBuilder implements RecommenderBuilder {
 	public Recommender buildRecommender(DataModel dataModel)
 			throws TasteException {
 		Factorizer factorizer = new SVDPlusPlusFactorizer(dataModel, 50, 5);
-		// Factorizer factorizer = new ParallelSGDFactorizer(dataModel, 1000,
+		// Factorizer factorizer = new ParallelSGDFactorizer(dataModel, 50,
 		// 0.01, 10);
 		// Factorizer factorizer = new ALSWRFactorizer(dataModel, 100, 0.5, 10);
 		return new SVDRecommender(dataModel, factorizer);

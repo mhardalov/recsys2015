@@ -5,6 +5,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -25,19 +26,21 @@ import org.apache.mahout.vectorizer.encoders.FeatureVectorEncoder;
 import org.apache.mahout.vectorizer.encoders.StaticWordValueEncoder;
 import org.recsyschallenge.algorithms.enums.SessionEventType;
 import org.recsyschallenge.algorithms.helpers.AlgorithmMesurer;
+import org.recsyschallenge.algorithms.helpers.ProgressMesurer;
 import org.recsyschallenge.helpers.InfoOutputHelper;
+import org.recsyschallenge.models.SessionClicks;
 import org.recsyschallenge.models.SessionInfo;
 
 import com.google.common.collect.Maps;
 
 public class SGDClassification {
-	private static final int FEATURES = 2000;
+	private static final int FEATURES = 30;
 
 	Map<String, Set<Integer>> traceDictionary;
 	FeatureVectorEncoder bias;
 	FeatureVectorEncoder clickValues;
-	FeatureVectorEncoder timesAvgValues;
-	FeatureVectorEncoder timesSessionValues;
+	FeatureVectorEncoder avgSessionLength;
+	FeatureVectorEncoder clickSessionLength;
 	FeatureVectorEncoder specialOffers;
 	FeatureVectorEncoder notCategorizedItems;
 	FeatureVectorEncoder categoriesCount;
@@ -50,6 +53,7 @@ public class SGDClassification {
 
 	private List<SessionInfo> buySessions;
 	private AlgorithmMesurer mesurer;
+	public Map<String, Integer> boughtByCat;
 
 	public SGDClassification(int interval, int avgWindow) {
 		this.traceDictionary = new TreeMap<String, Set<Integer>>();
@@ -61,11 +65,11 @@ public class SGDClassification {
 		this.clickValues = new ConstantValueEncoder("Clicks");
 		this.clickValues.setTraceDictionary(traceDictionary);
 
-		this.timesAvgValues = new ConstantValueEncoder("TimesAvg");
-		this.timesAvgValues.setTraceDictionary(traceDictionary);
+		this.avgSessionLength = new ConstantValueEncoder("TimesAvg");
+		this.avgSessionLength.setTraceDictionary(traceDictionary);
 
-		this.timesSessionValues = new ConstantValueEncoder("TimesSession");
-		this.timesSessionValues.setTraceDictionary(traceDictionary);
+		this.clickSessionLength = new ConstantValueEncoder("TimesSession");
+		this.clickSessionLength.setTraceDictionary(traceDictionary);
 
 		this.specialOffers = new ConstantValueEncoder("SpecialOffers");
 		this.specialOffers.setTraceDictionary(traceDictionary);
@@ -96,6 +100,8 @@ public class SGDClassification {
 		this.buySessions = new ArrayList<SessionInfo>();
 
 		this.mesurer = new AlgorithmMesurer();
+		
+		this.boughtByCat = new HashMap<String, Integer>();
 	}
 
 	private Vector profileToVector(SessionInfo session) {
@@ -103,13 +109,28 @@ public class SGDClassification {
 
 		// TODO: add features
 		int clickCount = session.getClicks().size();
-		clickValues.addToVector((byte[]) null, clickCount, v);
+		clickValues.addToVector((byte[]) null, clickCount * 0.248301, v);
 
-		timesSessionValues.addToVector((byte[]) null,
-				session.getClickSessionLength(), v);
+		this.clickSessionLength.addToVector((byte[]) null,
+				session.getClickSessionLength() * 0.056515, v);
 
-		timesAvgValues.addToVector((byte[]) null,
-				session.getAvgSessionLength(), v);
+		this.avgSessionLength.addToVector((byte[]) null,
+				session.getAvgSessionLength() * 0.211162, v);
+
+		for (SessionClicks click : session.getClicks()) {
+
+			if (session.isItemBought(click.getItemId())) {
+				String cat = click.getCategory();
+				Integer count = this.boughtByCat.get(cat);
+				
+				if (count == null) {
+					count = 0;
+ 				}
+				
+				count++;
+				this.boughtByCat.put(cat, count);
+			}
+		}
 
 		Map<String, Integer> clickedItems = session.getClickedItems();
 
@@ -118,28 +139,73 @@ public class SGDClassification {
 		for (Entry<String, Integer> item : clickedItems.entrySet()) {
 			String category = item.getKey();
 			int itemCount = item.getValue();
+			float normItemCount = (float) itemCount / clickCount;
+
 			if (category.length() > 3) {
 				productsCount++;
 				productItemsCount += itemCount;
-				encoder.addToVector("product", itemCount / clickCount, v);
+				encoder.addToVector("product", normItemCount * 0.474446, v);
 			} else {
+				float booster = 1.0f;
 				switch (category) {
 				case "0":
-					notCategorizedItems
-							.addToVector((byte[]) null, itemCount, v);
+					this.notCategorizedItems.addToVector((byte[]) null,
+							normItemCount * 2, v);
+					booster = 2f;
+					break;
+				case "1":
+					booster = 1.6f;
+					break;
+				case "2":
+					booster = 1.4f;
+					break;
+				case "3":
+					booster = 1.2f;
+					break;
+				case "4":
+					booster = 0.8f;
+					break;
+				case "5":
+					booster = 1.3f;
+					break;
+				case "6":
+					booster = 0.6f;
+					break;
+				case "7":
+					booster = 0.7f;
+					break;
+				case "8":
+					booster = 0.3f;
+					break;
+				case "9":
+					booster = 0.2f;
+					break;
+				case "10":
+					booster = 0.4f;
+					break;
+				case "11":
+					booster = 0.1f;
+					break;
+				case "12":
+					booster = 0.05f;
 					break;
 				case "S":
-					specialOffers.addToVector((byte[]) null, itemCount, v);
+					this.specialOffers.addToVector((byte[]) null,
+							normItemCount * 1.8, v);
+					booster = 1.8f;
 					break;
 				}
 
-				encoder.addToVector(category, itemCount / clickCount, v);
+				encoder.addToVector(category, normItemCount * booster, v);
 			}
 		}
 
-		categoriesCount.addToVector((byte[]) null, clickedItems.size(), v);
-		productCount.addToVector((byte[]) null, productsCount, v);
-		productsItemsCount.addToVector((byte[]) null, productItemsCount, v);
+		this.categoriesCount.addToVector((byte[]) null,
+				clickedItems.size() * 0.314772, v);
+		this.productCount.addToVector((byte[]) null,
+				((float) productsCount / clickedItems.size()) * 0.314772, v);
+		this.productsItemsCount.addToVector((byte[]) null,
+				((float) productItemsCount / clickCount) * 1.053067, v);
 
 		bias.addToVector((byte[]) null, 1, v);
 
@@ -192,7 +258,7 @@ public class SGDClassification {
 	}
 
 	private int classify(Vector v) {
-		Vector p = new DenseVector(2000);
+		Vector p = new DenseVector(FEATURES);
 		model.classifyFull(p, v);
 		int estimated = p.maxValueIndex();
 
@@ -203,21 +269,21 @@ public class SGDClassification {
 		InfoOutputHelper.printInfo("Starting train phase");
 
 		try {
-			int i = 0;
-			int perc = 5;
 			int clickCount = trainClicks.size();
+
+			ProgressMesurer progress = new ProgressMesurer(5, clickCount);
 			for (SessionInfo session : trainClicks) {
-				Vector v = this.profileToVector(session);
 				SessionEventType actual = session.hasBuys();
 
-				this.mesurer.incSessoinCount(actual);
-				learningAlgorithm.train(actual.ordinal(), v);
-				i++;
+				// Upsampling for minority class. Adding twice minority class
+				for (int i = actual == SessionEventType.BuyEvent ? 3 : 1; i > 0; i--) {
+					Vector v = this.profileToVector(session);
 
-				if ((int) (((float) i / clickCount) * 100) == perc) {
-					InfoOutputHelper.printInfo(perc + "% done");
-					perc += 5;
+					this.mesurer.incSessoinCount(actual);
+					learningAlgorithm.train(actual.ordinal(), v);
 				}
+
+				progress.stepIt();
 			}
 
 			this.model = learningAlgorithm.getBest().getPayload().getLearner();
@@ -272,9 +338,17 @@ public class SGDClassification {
 
 		ModelDissector md = new ModelDissector();
 		Map<String, Set<Integer>> traceDictionary = Maps.newTreeMap();
-		encoder.setTraceDictionary(traceDictionary);
-		clickValues.setTraceDictionary(traceDictionary);
-		bias.setTraceDictionary(traceDictionary);
+		this.encoder.setTraceDictionary(traceDictionary);
+		this.clickValues.setTraceDictionary(traceDictionary);
+		this.bias.setTraceDictionary(traceDictionary);
+
+		this.avgSessionLength.setTraceDictionary(traceDictionary);
+		this.clickSessionLength.setTraceDictionary(traceDictionary);
+		this.specialOffers.setTraceDictionary(traceDictionary);
+		this.notCategorizedItems.setTraceDictionary(traceDictionary);
+		this.categoriesCount.setTraceDictionary(traceDictionary);
+		this.productCount.setTraceDictionary(traceDictionary);
+		this.productsItemsCount.setTraceDictionary(traceDictionary);
 
 		Random rand = new Random();
 		List<SessionInfo> subSessions = sessions;

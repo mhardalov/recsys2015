@@ -12,14 +12,15 @@ public class SessionBuys implements Serializable {
 	 */
 	private static final long serialVersionUID = -3015150074325523361L;
 	private final int sessionID;
-	private final Date timestamp;
+	private Date timestamp;
 	private final int itemId;
 	private final double price;
 	private final int quantity;
 
 	public SessionBuys(String[] row) throws ParseException {
 		this.sessionID = Integer.parseInt(row[0]);
-		this.timestamp = TimeStampHelper.parseDate(row[1]);
+		String date = row[1];
+		this.timestamp = TimeStampHelper.parseDate(date);
 		this.itemId = Integer.parseInt(row[2]);
 		this.price = Double.parseDouble(row[3]);
 		this.quantity = Integer.parseInt(row[4]);

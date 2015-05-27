@@ -6,9 +6,13 @@ import java.security.SecureRandom;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
+import java.util.TreeMap;
 
 import org.apache.commons.cli.BasicParser;
 import org.apache.commons.cli.CommandLine;
@@ -23,8 +27,10 @@ import org.apache.spark.api.java.JavaRDD;
 import org.recsyschallenge.algorithms.classification.SGDClassification;
 import org.recsyschallenge.algorithms.recommender.UserBasedRecomender;
 import org.recsyschallenge.helpers.FilesParserHelper;
+import org.recsyschallenge.helpers.HDFSParserHelper;
 import org.recsyschallenge.helpers.InfoOutputHelper;
 import org.recsyschallenge.helpers.SparkHelper;
+import org.recsyschallenge.helpers.ValueComparator;
 import org.recsyschallenge.models.SessionInfo;
 
 public class RecSysMain {
@@ -37,7 +43,7 @@ public class RecSysMain {
 	private static final String OUTPUT_FILE = "yoochoose.output";
 
 	private static SGDClassification getClassifier() {
-		return new SGDClassification(8000, 5000);
+		return new SGDClassification(800, 500);
 	}
 
 	private static SGDClassification loadModelFromFile(String path)
@@ -48,12 +54,12 @@ public class RecSysMain {
 		return classification;
 	}
 
-	private SGDClassification trainClassifier(String clicksFile,
+	private static SGDClassification trainClassifier(String clicksFile,
 			String buysFile, String modelFile) throws ParseException,
 			IOException {
 		// Max buys 509696
 		FilesParserHelper parser = FilesParserHelper.newInstance(clicksFile,
-				buysFile, 509696, ratio);
+				buysFile, 509696, 9);
 
 		Map<Integer, SessionInfo> sessions;
 		List<SessionInfo> sessionsList;
@@ -80,8 +86,11 @@ public class RecSysMain {
 		SGDClassification classification = getClassifier();
 		classification.train(train);
 		testClassifier(classification, test);
-		dissectClassifier(classification, sessionsList);
-		saveModel(classification, modelFile);
+		dissectClassifier(classification, train);
+
+		if (modelFile != "") {
+			saveModel(classification, modelFile);
+		}
 
 		return classification;
 	}
@@ -136,7 +145,7 @@ public class RecSysMain {
 		List<SessionInfo> trainSessionsList;
 
 		FilesParserHelper trainParser = FilesParserHelper.newInstance(
-				clicksPath, buysPath, 509696, ratio);
+				clicksPath, buysPath, 509696, 9);
 
 		try {
 
@@ -211,21 +220,41 @@ public class RecSysMain {
 		String modelDir = line.getOptionValue("modelDir");
 		String outputDir = line.getOptionValue("outputDir");
 		long cores = Long.parseLong(line.getOptionValue("cores"));
+
 		initSparkContext(cores);
 
-		SGDClassification classification = loadModelFromFile(modelDir);
+		SGDClassification classification = trainClassifier(dataDir
+				+ CLICKS_FILE, dataDir + BUYS_FILE, "");
 
-		List<SessionInfo> buySessions = classifySessions(dataDir + TEST_FILE,
-				classification);
+		// ValueComparator bvc = new
+		// ValueComparator(classification.boughtByCat);
+		// TreeMap<String, Integer> sorted_map = new TreeMap<String,
+		// Integer>(bvc);
 
-		UserBasedRecomender recommender = getRecommender(buySessions, dataDir
-				+ CLICKS_FILE, dataDir + BUYS_FILE);
+		for (Entry<String, Integer> entry : classification.boughtByCat
+				.entrySet()) {
+			InfoOutputHelper.printInfo(entry.getValue() + "," + entry.getKey());
+		}
 
-		Map<Integer, List<Integer>> buySessionInfo = recommender
-				.getUserIntersect();
-		recommender.exportToFile(outputDir + OUTPUT_FILE, buySessionInfo);
-
-		buySessions.clear();
-		buySessions = null;
+		// SGDClassification classification = loadModelFromFile(modelDir);
+		//
+		// List<SessionInfo> buySessions = classifySessions(dataDir + TEST_FILE,
+		// classification);
+		//
+		// classification = null;
+		//
+		// UserBasedRecomender recommender = getRecommender(buySessions, dataDir
+		// + CLICKS_FILE, dataDir + BUYS_FILE);
+		//
+		// recommender.evalute();
+		//
+		// Map<Integer, List<Integer>> buySessionInfo = recommender
+		// .getUserIntersect();
+		// Date now = new Date();
+		// recommender.exportToFile(outputDir + now.toString() + OUTPUT_FILE,
+		// buySessionInfo);
+		//
+		// buySessions.clear();
+		// buySessions = null;
 	}
 }
