@@ -14,7 +14,7 @@ public class SessionClicks implements Serializable {
 	private final int sessionID;
 	private Date timestamp;
 	private final int itemId;
-	private final String category;
+	private final String category; 
 
 	public SessionClicks(String[] row) throws ParseException {
 		this.sessionID = Integer.parseInt(row[0]);

@@ -3,8 +3,12 @@ package org.recsyschallenge.algorithms.classification;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.UnsupportedEncodingException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +28,7 @@ import org.apache.mahout.math.Vector;
 import org.apache.mahout.vectorizer.encoders.ConstantValueEncoder;
 import org.apache.mahout.vectorizer.encoders.FeatureVectorEncoder;
 import org.apache.mahout.vectorizer.encoders.StaticWordValueEncoder;
+import org.recsyschallenge.algorithms.classification.builders.SGDClassificationBuilder;
 import org.recsyschallenge.algorithms.enums.SessionEventType;
 import org.recsyschallenge.algorithms.helpers.AlgorithmMesurer;
 import org.recsyschallenge.algorithms.helpers.ProgressMesurer;
@@ -34,7 +39,8 @@ import org.recsyschallenge.models.SessionInfo;
 import com.google.common.collect.Maps;
 
 public class SGDClassification {
-	private static final int FEATURES = 30;
+	private final SGDClassificationBuilder builder;
+	private final TFIDFAnalysis itemWeights;
 
 	Map<String, Set<Integer>> traceDictionary;
 	FeatureVectorEncoder bias;
@@ -47,15 +53,26 @@ public class SGDClassification {
 	FeatureVectorEncoder productCount;
 	FeatureVectorEncoder productsItemsCount;
 	FeatureVectorEncoder encoder;
+	FeatureVectorEncoder itemsEncoder;
+	FeatureVectorEncoder productItemsEncoder;
+	FeatureVectorEncoder repeatedItems;
+	FeatureVectorEncoder avgItemDistance;
+	FeatureVectorEncoder itemDistance;
+	FeatureVectorEncoder itemsBuyProp;
+	FeatureVectorEncoder itemCategoryWeight;
 
 	AdaptiveLogisticRegression learningAlgorithm;
 	CrossFoldLearner model;
+	ModelDissector md;
 
 	private List<SessionInfo> buySessions;
 	private AlgorithmMesurer mesurer;
-	public Map<String, Integer> boughtByCat;
 
-	public SGDClassification(int interval, int avgWindow) {
+	public SGDClassification(SGDClassificationBuilder builder,
+			TFIDFAnalysis itemWeights) {
+		this.builder = builder;
+		this.itemWeights = itemWeights;
+
 		this.traceDictionary = new TreeMap<String, Set<Integer>>();
 
 		this.encoder = new StaticWordValueEncoder("Strings");
@@ -87,125 +104,205 @@ public class SGDClassification {
 		this.productsItemsCount = new ConstantValueEncoder("ProductsItemsCount");
 		this.productsItemsCount.setTraceDictionary(traceDictionary);
 
+		this.itemsEncoder = new StaticWordValueEncoder("Items");
+		this.itemsEncoder.setTraceDictionary(traceDictionary);
+
+		this.productItemsEncoder = new StaticWordValueEncoder(
+				"ProductItemsEncoder");
+		this.productItemsEncoder.setTraceDictionary(traceDictionary);
+
+		this.repeatedItems = new ConstantValueEncoder("RepeatedItems");
+		this.repeatedItems.setTraceDictionary(traceDictionary);
+
+		this.itemsBuyProp = new ConstantValueEncoder("ItemsBuyProp");
+		this.itemsBuyProp.setTraceDictionary(traceDictionary);
+
+		this.itemCategoryWeight = new StaticWordValueEncoder(
+				"ItemCategoryWeight");
+		this.itemCategoryWeight.setTraceDictionary(traceDictionary);
+
+		// this.avgItemDistance = new ConstantValueEncoder("AvgItemDistance");
+		// this.avgItemDistance.setTraceDictionary(traceDictionary);
+		//
+		// this.itemDistance = new ConstantValueEncoder("ItemDistance");
+		// this.itemDistance.setTraceDictionary(traceDictionary);
+
 		this.bias = new ConstantValueEncoder("Intercept");
 		this.bias.setTraceDictionary(traceDictionary);
 
-		learningAlgorithm = new AdaptiveLogisticRegression(2, FEATURES,
-				new L1());
+		learningAlgorithm = new AdaptiveLogisticRegression(2,
+				builder.getFeatures(), new L1());
 
-		learningAlgorithm.setInterval(interval);
-		learningAlgorithm.setAveragingWindow(avgWindow);
+		learningAlgorithm.setInterval(builder.getInterval());
+		learningAlgorithm.setAveragingWindow(builder.getAvgWindow());
 		learningAlgorithm.setThreadCount(100);
 
 		this.buySessions = new ArrayList<SessionInfo>();
 
 		this.mesurer = new AlgorithmMesurer();
-		
-		this.boughtByCat = new HashMap<String, Integer>();
 	}
 
 	private Vector profileToVector(SessionInfo session) {
-		Vector v = new RandomAccessSparseVector(FEATURES);
+		Vector v = new RandomAccessSparseVector(builder.getFeatures());
 
 		// TODO: add features
 		int clickCount = session.getClicks().size();
-		clickValues.addToVector((byte[]) null, clickCount * 0.248301, v);
+		clickValues.addToVector((byte[]) null, Math.log(clickCount), v);
 
+		double sessionLenth = session.getClickSessionLength();
+		// TODO: change time interval
 		this.clickSessionLength.addToVector((byte[]) null,
-				session.getClickSessionLength() * 0.056515, v);
+				Math.log(1 + sessionLenth / clickCount), v);
+		//
+		// double avgSessionLength = session.getAvgSessionLength();
+		// / (60 * 1000F);
+		// this.avgSessionLength.addToVector((byte[]) null, avgSessionLength,
+		// v);
 
-		this.avgSessionLength.addToVector((byte[]) null,
-				session.getAvgSessionLength() * 0.211162, v);
-
-		for (SessionClicks click : session.getClicks()) {
-
-			if (session.isItemBought(click.getItemId())) {
-				String cat = click.getCategory();
-				Integer count = this.boughtByCat.get(cat);
-				
-				if (count == null) {
-					count = 0;
- 				}
-				
-				count++;
-				this.boughtByCat.put(cat, count);
-			}
-		}
-
-		Map<String, Integer> clickedItems = session.getClickedItems();
+		Map<String, Integer> clickedItemsByCat = session.getClickedItems();
 
 		long productsCount = 0;
-		int productItemsCount = 0;
-		for (Entry<String, Integer> item : clickedItems.entrySet()) {
+		int normProductItemsCount = 0;
+		for (Entry<String, Integer> item : clickedItemsByCat.entrySet()) {
 			String category = item.getKey();
 			int itemCount = item.getValue();
-			float normItemCount = (float) itemCount / clickCount;
+			float normItemCount = (float) itemCount;
+
+			double catWeight = itemWeights.getCategoryWeight(category);
 
 			if (category.length() > 3) {
 				productsCount++;
-				productItemsCount += itemCount;
-				encoder.addToVector("product", normItemCount * 0.474446, v);
+				normProductItemsCount += normItemCount * catWeight;
+
 			} else {
-				float booster = 1.0f;
 				switch (category) {
 				case "0":
 					this.notCategorizedItems.addToVector((byte[]) null,
-							normItemCount * 2, v);
-					booster = 2f;
-					break;
-				case "1":
-					booster = 1.6f;
-					break;
-				case "2":
-					booster = 1.4f;
-					break;
-				case "3":
-					booster = 1.2f;
-					break;
-				case "4":
-					booster = 0.8f;
-					break;
-				case "5":
-					booster = 1.3f;
-					break;
-				case "6":
-					booster = 0.6f;
-					break;
-				case "7":
-					booster = 0.7f;
-					break;
-				case "8":
-					booster = 0.3f;
-					break;
-				case "9":
-					booster = 0.2f;
-					break;
-				case "10":
-					booster = 0.4f;
-					break;
-				case "11":
-					booster = 0.1f;
-					break;
-				case "12":
-					booster = 0.05f;
+							normItemCount * catWeight, v);
 					break;
 				case "S":
-					this.specialOffers.addToVector((byte[]) null,
-							normItemCount * 1.8, v);
-					booster = 1.8f;
+					this.specialOffers.addToVector((byte[]) null, normItemCount
+							* catWeight, v);
 					break;
 				}
+			}
 
-				encoder.addToVector(category, normItemCount * booster, v);
+			if (catWeight > 0) {
+				encoder.addToVector(category, normItemCount * catWeight, v);
 			}
 		}
 
-		this.categoriesCount.addToVector((byte[]) null,
-				clickedItems.size() * 0.314772, v);
-		this.productCount.addToVector((byte[]) null,
-				((float) productsCount / clickedItems.size()) * 0.314772, v);
-		this.productsItemsCount.addToVector((byte[]) null,
-				((float) productItemsCount / clickCount) * 1.053067, v);
+		encoder.addToVector("product", normProductItemsCount, v);
+		categoriesCount.addToVector((byte[]) null,
+				Math.log(clickedItemsByCat.size()), v);
+		productCount.addToVector((byte[]) null,
+				((float) productsCount / clickCount), v);
+		productsItemsCount.addToVector((byte[]) null,
+				((float) normProductItemsCount), v);
+
+		List<SessionClicks> clicks = session.getClicks();
+		int repeatedItems = 0;
+		int maxItemId = 0;
+		int minItemId = Integer.MAX_VALUE;
+		// float lastClickTime = (float) session.getClicks()
+		// .get(session.getClicks().size() - 1).getTimestamp().getTime()
+		// / (60 * 1000F);
+
+		Map<Integer, Integer> clicksInSession = new HashMap<Integer, Integer>();
+
+		for (int i = 0; i < clicks.size(); i++) {
+			SessionClicks click = clicks.get(i);
+			int itemId = click.getItemId();
+			String category = click.getCategory();
+
+			// float clickTime = (float) click.getTimestamp().getTime()
+			// / (60 * 1000F);
+			//
+			// double timeNorm;
+			// if (clickCount <= 1 || sessionLenth == 0) {
+			// timeNorm = 1;
+			// } else {
+			// timeNorm = (avgSessionLength - clickTime) / sessionLenth;
+			//
+			// if (timeNorm == 0) {
+			// timeNorm = 0.01;
+			// }
+			// }
+
+			// this.itemsEncoder.addToVector("time:" + String.valueOf(itemId),
+			// clickTime / lastClickTime, v);
+
+			this.itemsEncoder.addToVector("pos:" + String.valueOf(itemId),
+					(0.5 - ((float) clickCount / 2 - i) / clickCount), v);
+
+			Integer clickByIdCount = clicksInSession.get(itemId);
+			if (clickByIdCount == null) {
+				clickByIdCount = 0;
+			} else {
+
+				// Each item must be counted once!
+				if (clickByIdCount == 1) {
+					repeatedItems++;
+				}
+			}
+
+			clickByIdCount++;
+			clicksInSession.put(click.getItemId(), clickByIdCount);
+
+			double itemWeight = itemWeights.getItemWeight(itemId);
+			double catWeight = itemWeights.getCategoryWeight(category);
+
+			this.itemCategoryWeight.addToVector("ic:" + itemId, itemWeight
+					* catWeight, v);
+
+			if (maxItemId < itemId) {
+				maxItemId = itemId;
+			}
+
+			if (minItemId > itemId) {
+				minItemId = itemId;
+			}
+
+			// if (i < clicks.size() - 1) {
+			// avgDistance += Math.abs(click.getItemId()
+			// - clicks.get(i + 1).getItemId());
+			// this.itemsEncoder.addToVector(
+			// "itemDist:" + i,
+			// , v);
+			// }
+		}
+
+		// if (clickCount > 1) {
+		// double avgDistNorm = Math.log(1 + (double) avgDistance
+		// / (maxItemId - minItemId));
+		//
+		// this.avgItemDistance.addToVector((byte[]) null, avgDistNorm, v);
+		// }
+		//
+		// double itemDistanceNorm = Math.log(1 + (double) (maxItemId -
+		// minItemId)
+		// / avgDistance);
+		// this.itemDistance.addToVector((byte[]) null, itemDistanceNorm, v);
+
+		this.repeatedItems.addToVector((byte[]) null, (float) repeatedItems
+				/ clicksInSession.size(), v);
+
+		// TFIDF tfidf = new TFIDF();
+		double prop = 0;
+		for (Entry<Integer, Integer> entry : clicksInSession.entrySet()) {
+			int itemId = entry.getKey();
+			int count = entry.getValue();
+
+			double itemWeight = itemWeights.getItemWeight(itemId);
+			if (itemWeight > 0) {
+				prop += (itemWeight * count);
+				// Math.log(1 + tfIdfValue)
+				this.itemsEncoder.addToVector(String.valueOf(itemId),
+						itemWeight * count, v);
+			}
+		}
+
+		this.itemsBuyProp.addToVector((byte[]) null, Math.log(1 + prop), v);
 
 		bias.addToVector((byte[]) null, 1, v);
 
@@ -258,7 +355,7 @@ public class SGDClassification {
 	}
 
 	private int classify(Vector v) {
-		Vector p = new DenseVector(FEATURES);
+		Vector p = new DenseVector(builder.getFeatures());
 		model.classifyFull(p, v);
 		int estimated = p.maxValueIndex();
 
@@ -274,10 +371,11 @@ public class SGDClassification {
 			ProgressMesurer progress = new ProgressMesurer(5, clickCount);
 			for (SessionInfo session : trainClicks) {
 				SessionEventType actual = session.hasBuys();
+				Vector v = this.profileToVector(session);
 
 				// Upsampling for minority class. Adding twice minority class
-				for (int i = actual == SessionEventType.BuyEvent ? 3 : 1; i > 0; i--) {
-					Vector v = this.profileToVector(session);
+				for (int i = actual == SessionEventType.BuyEvent ? this.builder
+						.getUpSamplingRatio() : 1; i > 0; i--) {
 
 					this.mesurer.incSessoinCount(actual);
 					learningAlgorithm.train(actual.ordinal(), v);
@@ -333,10 +431,57 @@ public class SGDClassification {
 		System.out.println();
 	}
 
+	public void saveResults(String filePath, int testSessionSize)
+			throws FileNotFoundException, UnsupportedEncodingException {
+		Date d = new Date();
+		SimpleDateFormat sdf = new SimpleDateFormat("dd-M-yyyy hh:mm:ss");
+		String fileName = filePath + "/Classification-" + sdf.format(d)
+				+ ".txt";
+
+		PrintWriter writer = new PrintWriter(fileName, "UTF-8");
+		writer.println("Upsampling on buys: " + builder.getUpSamplingRatio());
+		writer.println("BuysCount: " + builder.getBuysCount());
+		writer.println("Clicks ratio: " + builder.getClicksRatio());
+		writer.println("Interval: " + builder.getInterval());
+		writer.println("AvgWindow: " + builder.getAvgWindow());
+
+		writer.println();
+		writer.println("Buys: " + this.mesurer.getBuySessionsCount()
+				+ "/OnlyClicks:" + this.mesurer.getClickSessionsCount());
+
+		writer.println("Guessed Buys: " + this.mesurer.getGuessedBuys()
+				+ "/ Guessed Clicks:" + this.mesurer.getGuessedClicks());
+
+		writer.println("Guessed percentage: "
+				+ this.mesurer.getGuessedPercent() + "% ("
+				+ this.mesurer.getGuessed() + "/" + testSessionSize + ")");
+
+		writer.println("AUC: " + model.auc());
+		writer.println("Correct: " + model.percentCorrect());
+		writer.println("LogLikehood: " + model.getLogLikelihood());
+		writer.println("Record: " + model.getRecord());
+		writer.println("Features: " + model.getNumFeatures());
+
+		writer.println();
+		writer.println("Incuded Features:");
+		for (String feature : this.traceDictionary.keySet()) {
+			writer.println(feature);
+		}
+
+		writer.println();
+		writer.println("Information Gain:");
+		for (ModelDissector.Weight w : md.summary(builder.getFeatures())) {
+			writer.printf("%s\t%f\t%d\n", w.getFeature(), w.getWeight(),
+					w.getMaxImpact());
+		}
+
+		writer.close();
+	}
+
 	public void dissect(List<SessionInfo> sessions) throws IOException {
 		InfoOutputHelper.printInfo("Starting dissect phase");
 
-		ModelDissector md = new ModelDissector();
+		md = new ModelDissector();
 		Map<String, Set<Integer>> traceDictionary = Maps.newTreeMap();
 		this.encoder.setTraceDictionary(traceDictionary);
 		this.clickValues.setTraceDictionary(traceDictionary);
@@ -349,6 +494,7 @@ public class SGDClassification {
 		this.categoriesCount.setTraceDictionary(traceDictionary);
 		this.productCount.setTraceDictionary(traceDictionary);
 		this.productsItemsCount.setTraceDictionary(traceDictionary);
+		this.itemsEncoder.setTraceDictionary(traceDictionary);
 
 		Random rand = new Random();
 		List<SessionInfo> subSessions = sessions;
@@ -360,7 +506,7 @@ public class SGDClassification {
 			md.update(v, traceDictionary, model);
 		}
 
-		for (ModelDissector.Weight w : md.summary(1000)) {
+		for (ModelDissector.Weight w : md.summary(builder.getFeatures())) {
 			System.out.printf("%s\t%f\t%d\n", w.getFeature(), w.getWeight(),
 					w.getMaxImpact());
 		}

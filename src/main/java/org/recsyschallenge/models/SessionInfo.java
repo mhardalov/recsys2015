@@ -61,16 +61,6 @@ public class SessionInfo implements Serializable {
 		for (SessionClicks click : this.clicks) {
 			String category = click.getCategory();
 
-			// if (category != "0") {
-			// continue;
-			// }
-
-			// TODO: validate
-			// If it is product name then we transfer it to "product" feature
-			// if (category.length() > 3) {
-			// category = "product";
-			// }
-
 			Integer count = clickedItems.get(category);
 
 			if (count == null) {
@@ -84,13 +74,14 @@ public class SessionInfo implements Serializable {
 	}
 
 	public double getClickSessionLength() {
-		int clickSize = this.clicks.size();
+		// int clickSize = this.clicks.size();
 
 		Date firstClick = this.clicks.get(0).getTimestamp();
 		Date lastClick = this.clicks.get(this.clicks.size() - 1).getTimestamp();
+		float sessionLength = (lastClick.getTime() - firstClick.getTime())
+				/ (60 * 1000F);
 
-		return Math.log(1 + lastClick.getTime() - firstClick.getTime()
-				/ clickSize);
+		return sessionLength;
 	}
 
 	public double getAvgSessionLength() {
@@ -101,7 +92,10 @@ public class SessionInfo implements Serializable {
 			avg += click.getTimestamp().getTime();
 		}
 
-		return Math.log(1 + avg / clickSize);
+		// time in minutes
+		avg /= (60 * 1000F);
+
+		return avg / clickSize;
 	}
 
 	public boolean isItemBought(int itemId) {

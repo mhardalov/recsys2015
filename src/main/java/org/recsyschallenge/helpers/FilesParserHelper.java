@@ -8,6 +8,7 @@ import java.text.ParseException;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.recsyschallenge.algorithms.classification.TFIDFAnalysis;
 import org.recsyschallenge.models.SessionBuys;
 import org.recsyschallenge.models.SessionClicks;
 import org.recsyschallenge.models.SessionInfo;
@@ -22,6 +23,7 @@ public class FilesParserHelper {
 	private final long sessionsLimit;
 	private final boolean loadAllData;
 	private final float clicksRatio;
+	private TFIDFAnalysis tfidf;
 
 	public static FilesParserHelper newInstance(String clicksPath,
 			String buysPath) {
@@ -42,6 +44,7 @@ public class FilesParserHelper {
 		this.loadAllData = (sessionsLimit <= 0);
 		this.sessions = new HashMap<Integer, SessionInfo>();
 		this.clicksRatio = clicksRatio;
+		this.tfidf = new TFIDFAnalysis();
 	}
 
 	private void parseClicks() throws IOException, ParseException {
@@ -126,6 +129,11 @@ public class FilesParserHelper {
 					* (1 + this.clicksRatio);
 		}
 
+		InfoOutputHelper.printInfo("Loading item weights");
+		for (SessionInfo session : this.sessions.values()) {
+			this.tfidf.addTermsFromDoc(session);
+		}
+
 		System.out.println();
 
 		return this.sessions;
@@ -134,5 +142,10 @@ public class FilesParserHelper {
 	public void dispose() {
 		this.sessions.clear();
 		this.sessions = null;
+		this.tfidf = null;
+	}
+
+	public TFIDFAnalysis getTfidf() {
+		return tfidf;
 	}
 }

@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 
 import org.apache.commons.cli.BasicParser;
 import org.apache.commons.cli.CommandLine;
@@ -18,47 +17,69 @@ import org.apache.commons.cli.OptionBuilder;
 import org.apache.commons.cli.Options;
 import org.apache.mahout.cf.taste.common.TasteException;
 import org.recsyschallenge.algorithms.classification.SGDClassification;
+import org.recsyschallenge.algorithms.classification.TFIDFAnalysis;
+import org.recsyschallenge.algorithms.classification.builders.SGDClassificationBuilder;
 import org.recsyschallenge.algorithms.recommender.UserBasedRecomender;
 import org.recsyschallenge.helpers.FilesParserHelper;
 import org.recsyschallenge.helpers.InfoOutputHelper;
 import org.recsyschallenge.helpers.SparkHelper;
 import org.recsyschallenge.models.SessionInfo;
 
+import breeze.linalg.max;
+
 public class RecSysMain {
 
 	// -XX:+UseParallelGC -XX:+UseParallelOldGC
-	private static final float ratio = (float) 8;
+	private static final float ratio = 8;
+	private static final int buysCount = 509696;
 	private static final String TEST_FILE = "yoochoose-test.dat";
 	private static final String CLICKS_FILE = "yoochoose-clicks.dat";
 	private static final String BUYS_FILE = "yoochoose-buys.dat";
 	private static final String OUTPUT_FILE = "yoochoose.output";
 
-	private static SGDClassification getClassifier() {
-		return new SGDClassification(800, 500);
+	private static SGDClassificationBuilder getBuilder() {
+		int interval = 8000;
+		int avgWindow = 5000;
+		int features = 10000; // 86206
+		int upSamplingRatio = (int) ratio;
+		SGDClassificationBuilder builder = new SGDClassificationBuilder(
+				features, interval, avgWindow, upSamplingRatio, buysCount,
+				ratio);
+
+		return builder;
 	}
 
-	private static SGDClassification loadModelFromFile(String path)
-			throws FileNotFoundException, IOException {
-		SGDClassification classification = getClassifier();
+	private static SGDClassification getClassifier(TFIDFAnalysis tfidf)
+			throws IOException {
+		SGDClassificationBuilder builder = getBuilder();
+
+		return new SGDClassification(builder, tfidf);
+	}
+
+	private static SGDClassification loadModelFromFile(String path,
+			TFIDFAnalysis tfidf) throws FileNotFoundException, IOException {
+		SGDClassification classification = getClassifier(tfidf);
 		classification.loadModel(path);
 
 		return classification;
 	}
 
 	private static SGDClassification trainClassifier(String clicksFile,
-			String buysFile, String modelFile) throws ParseException,
-			IOException {
+			String buysFile, String modelFile, String resultDir)
+			throws ParseException, IOException {
 		// Max buys 509696
 		FilesParserHelper parser = FilesParserHelper.newInstance(clicksFile,
-				buysFile, 509696, 9);
+				buysFile, buysCount, ratio);
 
 		Map<Integer, SessionInfo> sessions;
 		List<SessionInfo> sessionsList;
+		TFIDFAnalysis tfidf;
 
 		try {
 			sessions = parser.parseSessions();
 
 			sessionsList = new ArrayList<SessionInfo>(sessions.values());
+			tfidf = new TFIDFAnalysis(parser.getTfidf());
 		} finally {
 			parser.dispose();
 			parser = null;
@@ -68,16 +89,21 @@ public class RecSysMain {
 
 		Collections.shuffle(sessionsList, new SecureRandom());
 
-		// 10% of all data
-		int testRecords = (int) (sessionsSize * 0.1);
+		// 20% of all data
+		int testRecords = (int) (sessionsSize * 0.2);
 		List<SessionInfo> test = sessionsList.subList(0, testRecords);
 		List<SessionInfo> train = sessionsList.subList(testRecords,
 				sessionsSize);
 
-		SGDClassification classification = getClassifier();
+		SGDClassification classification = getClassifier(tfidf);
 		classification.train(train);
+
 		testClassifier(classification, test);
 		dissectClassifier(classification, train);
+
+		if (resultDir != "") {
+			classification.saveResults(resultDir, train.size());
+		}
 
 		if (modelFile != "") {
 			saveModel(classification, modelFile);
@@ -215,17 +241,12 @@ public class RecSysMain {
 		initSparkContext(cores);
 
 		SGDClassification classification = trainClassifier(dataDir
-				+ CLICKS_FILE, dataDir + BUYS_FILE, "");
+				+ CLICKS_FILE, dataDir + BUYS_FILE, "", outputDir + "/results");
 
-		// ValueComparator bvc = new
-		// ValueComparator(classification.boughtByCat);
-		// TreeMap<String, Integer> sorted_map = new TreeMap<String,
-		// Integer>(bvc);
-
-		for (Entry<String, Integer> entry : classification.boughtByCat
-				.entrySet()) {
-			InfoOutputHelper.printInfo(entry.getValue() + "," + entry.getKey());
-		}
+		// for (Entry<String, Integer> entry : classification.boughtByCat
+		// .entrySet()) {
+		// InfoOutputHelper.printInfo(entry.getValue() + "," + entry.getKey());
+		// }
 
 		// SGDClassification classification = loadModelFromFile(modelDir);
 		//
