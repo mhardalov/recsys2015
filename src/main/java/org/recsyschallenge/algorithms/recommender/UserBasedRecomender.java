@@ -109,7 +109,7 @@ public class UserBasedRecomender {
 				.parallelize(buySessions);
 
 		final long sessionCount = rddBuySessions.count();
-		final float threshold = 3.5f;
+		final float threshold = 6f;
 		progress = new ProgressMesurer(5, sessionCount);
 
 		rddBuySessions.foreach(session -> {
