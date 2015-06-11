@@ -18,7 +18,7 @@ public class SessionInfo implements Serializable {
 	 * 
 	 */
 	private static final long serialVersionUID = 4097902057395609332L;
-	private static final float threshold = 4.0f;
+	private static final float threshold = 6.0f;
 
 	private final int sessionId;
 	private List<SessionBuys> buys;
@@ -133,7 +133,7 @@ public class SessionInfo implements Serializable {
 		for (SessionClicks click : this.getClicks()) {
 			int itemId = click.getItemId();
 			items.add(new GenericPreference(userId, itemId, (this
-					.isItemBought(itemId) ? 1.0f : 0.0f)));
+					.isItemBought(itemId) ? 5.0f : 1.0f)));
 		}
 		return new GenericUserPreferenceArray(items);
 	}

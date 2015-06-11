@@ -6,6 +6,7 @@ import java.security.SecureRandom;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 
@@ -30,17 +31,18 @@ import breeze.linalg.max;
 public class RecSysMain {
 
 	// -XX:+UseParallelGC -XX:+UseParallelOldGC
-	private static final float ratio = 8;
+	private static final float ratio = 14;
 	private static final int buysCount = 509696;
 	private static final String TEST_FILE = "yoochoose-test.dat";
 	private static final String CLICKS_FILE = "yoochoose-clicks.dat";
 	private static final String BUYS_FILE = "yoochoose-buys.dat";
 	private static final String OUTPUT_FILE = "yoochoose.output";
+	private static TFIDFAnalysis itemWeights;
 
 	private static SGDClassificationBuilder getBuilder() {
 		int interval = 8000;
 		int avgWindow = 5000;
-		int features = 10000; // 86206
+		int features = 100000; // 86206
 		int upSamplingRatio = (int) ratio;
 		SGDClassificationBuilder builder = new SGDClassificationBuilder(
 				features, interval, avgWindow, upSamplingRatio, buysCount,
@@ -65,21 +67,20 @@ public class RecSysMain {
 	}
 
 	private static SGDClassification trainClassifier(String clicksFile,
-			String buysFile, String modelFile, String resultDir)
+			String buysFile, String modelPath, String resultDir)
 			throws ParseException, IOException {
 		// Max buys 509696
 		FilesParserHelper parser = FilesParserHelper.newInstance(clicksFile,
-				buysFile, buysCount, ratio);
+				buysFile);
 
 		Map<Integer, SessionInfo> sessions;
 		List<SessionInfo> sessionsList;
-		TFIDFAnalysis tfidf;
 
 		try {
 			sessions = parser.parseSessions();
 
 			sessionsList = new ArrayList<SessionInfo>(sessions.values());
-			tfidf = new TFIDFAnalysis(parser.getTfidf());
+			itemWeights = new TFIDFAnalysis(parser.getTfidf());
 		} finally {
 			parser.dispose();
 			parser = null;
@@ -95,7 +96,7 @@ public class RecSysMain {
 		List<SessionInfo> train = sessionsList.subList(testRecords,
 				sessionsSize);
 
-		SGDClassification classification = getClassifier(tfidf);
+		SGDClassification classification = getClassifier(itemWeights);
 		classification.train(train);
 
 		testClassifier(classification, test);
@@ -105,8 +106,8 @@ public class RecSysMain {
 			classification.saveResults(resultDir, train.size());
 		}
 
-		if (modelFile != "") {
-			saveModel(classification, modelFile);
+		if (modelPath != "") {
+			saveModel(classification, modelPath);
 		}
 
 		return classification;
@@ -162,7 +163,7 @@ public class RecSysMain {
 		List<SessionInfo> trainSessionsList;
 
 		FilesParserHelper trainParser = FilesParserHelper.newInstance(
-				clicksPath, buysPath, 509696, 9);
+				clicksPath, buysPath, 509696, 8);
 
 		try {
 
@@ -241,32 +242,31 @@ public class RecSysMain {
 		initSparkContext(cores);
 
 		SGDClassification classification = trainClassifier(dataDir
-				+ CLICKS_FILE, dataDir + BUYS_FILE, "", outputDir + "/results");
+				+ CLICKS_FILE, dataDir + BUYS_FILE, modelDir, outputDir
+				+ "/results");
 
-		// for (Entry<String, Integer> entry : classification.boughtByCat
-		// .entrySet()) {
-		// InfoOutputHelper.printInfo(entry.getValue() + "," + entry.getKey());
-		// }
+		classification = null;
+		classification = loadModelFromFile(modelDir, itemWeights);
 
-		// SGDClassification classification = loadModelFromFile(modelDir);
-		//
-		// List<SessionInfo> buySessions = classifySessions(dataDir + TEST_FILE,
-		// classification);
-		//
-		// classification = null;
-		//
-		// UserBasedRecomender recommender = getRecommender(buySessions, dataDir
-		// + CLICKS_FILE, dataDir + BUYS_FILE);
-		//
-		// recommender.evalute();
-		//
-		// Map<Integer, List<Integer>> buySessionInfo = recommender
-		// .getUserIntersect();
-		// Date now = new Date();
-		// recommender.exportToFile(outputDir + now.toString() + OUTPUT_FILE,
-		// buySessionInfo);
-		//
-		// buySessions.clear();
-		// buySessions = null;
+		List<SessionInfo> buySessions = classifySessions(dataDir + TEST_FILE,
+				classification);
+
+		InfoOutputHelper.printInfo("Classified sessions:" + buySessions.size());
+
+		classification = null;
+
+		UserBasedRecomender recommender = getRecommender(buySessions, dataDir
+				+ CLICKS_FILE, dataDir + BUYS_FILE);
+
+		recommender.evalute();
+
+		Map<Integer, List<Integer>> buySessionInfo = recommender
+				.getUserIntersect();
+		Date now = new Date();
+		recommender.exportToFile(outputDir + now.toString() + OUTPUT_FILE,
+				buySessionInfo);
+
+		buySessions.clear();
+		buySessions = null;
 	}
 }

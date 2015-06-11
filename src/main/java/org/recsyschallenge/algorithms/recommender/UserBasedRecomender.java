@@ -2,6 +2,7 @@ package org.recsyschallenge.algorithms.recommender;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -114,30 +115,30 @@ public class UserBasedRecomender {
 		rddBuySessions.foreach(session -> {
 			int sessionId = session.getSessionId();
 
-			List<Integer> boughtItems = session.getRecIntersect(recommender
-					.recommend(sessionId, 100, true));
-
-			if (boughtItems != null) {
-				intersect.put(sessionId, boughtItems);
-			}
-
-			// for (SessionClicks click : session.getClicks()) {
-			// int itemId = click.getItemId();
-			// float score = recommender.estimatePreference(sessionId,
-			// itemId);
+			// List<Integer> boughtItems = session.getRecIntersect(recommender
+			// .recommend(sessionId, 100, true));
 			//
-			// if (Float.compare(score, threshold) > 0) {
-			// List<Integer> boughtItems = intersect.get(sessionId);
-			// if (boughtItems == null) {
-			// boughtItems = new ArrayList<Integer>();
-			// }
-			// boughtItems.add(itemId);
-			// System.out.printf("Session %d Item %d score %f\n",
-			// sessionId, itemId, score);
-			//
+			// if (boughtItems != null) {
 			// intersect.put(sessionId, boughtItems);
 			// }
-			// }
+
+				for (SessionClicks click : session.getClicks()) {
+					int itemId = click.getItemId();
+					float score = recommender.estimatePreference(sessionId,
+							itemId);
+
+					if (Float.compare(score, threshold) > 0) {
+						List<Integer> boughtItems = intersect.get(sessionId);
+						if (boughtItems == null) {
+							boughtItems = new ArrayList<Integer>();
+						}
+						boughtItems.add(itemId);
+						System.out.printf("Session %d Item %d score %f\n",
+								sessionId, itemId, score);
+
+						intersect.put(sessionId, boughtItems);
+					}
+				}
 
 				progress.stepIt();
 			});

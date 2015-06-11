@@ -14,9 +14,10 @@ public class UserBasedRecomenderBuilder implements RecommenderBuilder {
 	@Override
 	public Recommender buildRecommender(DataModel dataModel)
 			throws TasteException {
-		Factorizer factorizer = new SVDPlusPlusFactorizer(dataModel, 50, 5);
+		Factorizer factorizer = new SVDPlusPlusFactorizer(dataModel, 60, 5);
 		// Factorizer factorizer = new ParallelSGDFactorizer(dataModel, 50,
-		// 0.01, 10);
+		// 0.01,
+		// 5);
 		// Factorizer factorizer = new ALSWRFactorizer(dataModel, 100, 0.5, 10);
 		return new SVDRecommender(dataModel, factorizer);
 		// ItemSimilarity sim = new PearsonCorrelationSimilarity(dataModel);

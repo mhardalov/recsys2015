@@ -22,6 +22,7 @@ import org.apache.mahout.classifier.sgd.CrossFoldLearner;
 import org.apache.mahout.classifier.sgd.L1;
 import org.apache.mahout.classifier.sgd.ModelDissector;
 import org.apache.mahout.classifier.sgd.ModelSerializer;
+import org.apache.mahout.classifier.sgd.OnlineLogisticRegression;
 import org.apache.mahout.math.DenseVector;
 import org.apache.mahout.math.RandomAccessSparseVector;
 import org.apache.mahout.math.Vector;
@@ -60,14 +61,16 @@ public class SGDClassification {
 	FeatureVectorEncoder itemDistance;
 	FeatureVectorEncoder itemsBuyProp;
 	FeatureVectorEncoder itemCategoryWeight;
+	FeatureVectorEncoder uniqueClicksRatio;
 
-	AdaptiveLogisticRegression learningAlgorithm;
-	CrossFoldLearner model;
+	OnlineLogisticRegression learningAlgorithm;
+	// CrossFoldLearner model;
 	ModelDissector md;
 
 	private List<SessionInfo> buySessions;
 	private AlgorithmMesurer mesurer;
 
+	@SuppressWarnings("resource")
 	public SGDClassification(SGDClassificationBuilder builder,
 			TFIDFAnalysis itemWeights) {
 		this.builder = builder;
@@ -121,6 +124,9 @@ public class SGDClassification {
 				"ItemCategoryWeight");
 		this.itemCategoryWeight.setTraceDictionary(traceDictionary);
 
+		this.uniqueClicksRatio = new ConstantValueEncoder("UniqueClicksRatio");
+		this.uniqueClicksRatio.setTraceDictionary(traceDictionary);
+
 		// this.avgItemDistance = new ConstantValueEncoder("AvgItemDistance");
 		// this.avgItemDistance.setTraceDictionary(traceDictionary);
 		//
@@ -130,12 +136,14 @@ public class SGDClassification {
 		this.bias = new ConstantValueEncoder("Intercept");
 		this.bias.setTraceDictionary(traceDictionary);
 
-		learningAlgorithm = new AdaptiveLogisticRegression(2,
-				builder.getFeatures(), new L1());
-
-		learningAlgorithm.setInterval(builder.getInterval());
-		learningAlgorithm.setAveragingWindow(builder.getAvgWindow());
-		learningAlgorithm.setThreadCount(100);
+		// learningAlgorithm = new AdaptiveLogisticRegression(2,
+		// builder.getFeatures(), new L1());
+		learningAlgorithm = new OnlineLogisticRegression(2,
+				builder.getFeatures(), new L1()).alpha(1).stepOffset(1000)
+				.decayExponent(0.9).lambda(3.0e-5).learningRate(20);
+		// learningAlgorithm.setInterval(builder.getInterval());
+		// learningAlgorithm.setAveragingWindow(builder.getAvgWindow());
+		// learningAlgorithm.setThreadCount(100);
 
 		this.buySessions = new ArrayList<SessionInfo>();
 
@@ -149,10 +157,10 @@ public class SGDClassification {
 		int clickCount = session.getClicks().size();
 		clickValues.addToVector((byte[]) null, Math.log(clickCount), v);
 
-		double sessionLenth = session.getClickSessionLength();
+//		double sessionLength = session.getClickSessionLength();
 		// TODO: change time interval
-		this.clickSessionLength.addToVector((byte[]) null,
-				Math.log(1 + sessionLenth / clickCount), v);
+//		this.clickSessionLength.addToVector((byte[]) null,
+//				Math.log(1 + sessionLength / clickCount), v);
 		//
 		// double avgSessionLength = session.getAvgSessionLength();
 		// / (60 * 1000F);
@@ -177,12 +185,13 @@ public class SGDClassification {
 			} else {
 				switch (category) {
 				case "0":
-					this.notCategorizedItems.addToVector((byte[]) null,
-							normItemCount * catWeight, v);
+					// this.notCategorizedItems.addToVector((byte[]) null,
+					// normItemCount * catWeight, v);
 					break;
 				case "S":
-					this.specialOffers.addToVector((byte[]) null, normItemCount
-							* catWeight, v);
+					// this.specialOffers.addToVector((byte[]) null,
+					// normItemCount
+					// * catWeight, v);
 					break;
 				}
 			}
@@ -208,7 +217,7 @@ public class SGDClassification {
 		// .get(session.getClicks().size() - 1).getTimestamp().getTime()
 		// / (60 * 1000F);
 
-		Map<Integer, Integer> clicksInSession = new HashMap<Integer, Integer>();
+		Map<Integer, Integer> uniqueClicksInSession = new HashMap<Integer, Integer>();
 
 		for (int i = 0; i < clicks.size(); i++) {
 			SessionClicks click = clicks.get(i);
@@ -230,12 +239,12 @@ public class SGDClassification {
 			// }
 
 			// this.itemsEncoder.addToVector("time:" + String.valueOf(itemId),
-			// clickTime / lastClickTime, v);
+			// lastClickTime - clickTime / sessionLength, v);
 
-			this.itemsEncoder.addToVector("pos:" + String.valueOf(itemId),
-					(0.5 - ((float) clickCount / 2 - i) / clickCount), v);
+			// this.itemsEncoder.addToVector("pos:" + String.valueOf(itemId),
+			// (0.5 - ((float) clickCount / 2 - i) / clickCount), v);
 
-			Integer clickByIdCount = clicksInSession.get(itemId);
+			Integer clickByIdCount = uniqueClicksInSession.get(itemId);
 			if (clickByIdCount == null) {
 				clickByIdCount = 0;
 			} else {
@@ -247,13 +256,13 @@ public class SGDClassification {
 			}
 
 			clickByIdCount++;
-			clicksInSession.put(click.getItemId(), clickByIdCount);
+			uniqueClicksInSession.put(click.getItemId(), clickByIdCount);
 
 			double itemWeight = itemWeights.getItemWeight(itemId);
 			double catWeight = itemWeights.getCategoryWeight(category);
 
-			this.itemCategoryWeight.addToVector("ic:" + itemId, itemWeight
-					* catWeight, v);
+			// this.itemCategoryWeight.addToVector("ic:" + itemId, itemWeight
+			// * catWeight, v);
 
 			if (maxItemId < itemId) {
 				maxItemId = itemId;
@@ -285,11 +294,14 @@ public class SGDClassification {
 		// this.itemDistance.addToVector((byte[]) null, itemDistanceNorm, v);
 
 		this.repeatedItems.addToVector((byte[]) null, (float) repeatedItems
-				/ clicksInSession.size(), v);
+				/ uniqueClicksInSession.size(), v);
+
+		this.uniqueClicksRatio.addToVector((byte[]) null,
+				(float) uniqueClicksInSession.size() / clickCount, v);
 
 		// TFIDF tfidf = new TFIDF();
 		double prop = 0;
-		for (Entry<Integer, Integer> entry : clicksInSession.entrySet()) {
+		for (Entry<Integer, Integer> entry : uniqueClicksInSession.entrySet()) {
 			int itemId = entry.getKey();
 			int count = entry.getValue();
 
@@ -318,7 +330,7 @@ public class SGDClassification {
 		int[] bumps = new int[] { 1, 2, 5 };
 
 		double mu = Math.min(k + 1, 200);
-		double ll = model.logLikelihood(actual, v);
+		double ll = learningAlgorithm.logLikelihood(actual, v);
 		averageLL = averageLL + (ll - averageLL) / mu;
 
 		averageCorrect = averageCorrect + (correct - averageCorrect) / mu;
@@ -355,8 +367,8 @@ public class SGDClassification {
 	}
 
 	private int classify(Vector v) {
-		Vector p = new DenseVector(builder.getFeatures());
-		model.classifyFull(p, v);
+		Vector p = new DenseVector(2);
+		learningAlgorithm.classifyFull(p, v);
 		int estimated = p.maxValueIndex();
 
 		return estimated;
@@ -384,7 +396,8 @@ public class SGDClassification {
 				progress.stepIt();
 			}
 
-			this.model = learningAlgorithm.getBest().getPayload().getLearner();
+			// this.model =
+			// learningAlgorithm.getBest().getPayload().getLearner();
 
 			InfoOutputHelper.printInfo("Buys: "
 					+ this.mesurer.getBuySessionsCount() + "/OnlyClicks:"
@@ -422,11 +435,12 @@ public class SGDClassification {
 				+ this.mesurer.getGuessedPercent() + "% ("
 				+ this.mesurer.getGuessed() + "/" + testSessionSize + ")");
 
-		InfoOutputHelper.printInfo("AUC: " + model.auc());
-		InfoOutputHelper.printInfo("Correct: " + model.percentCorrect());
-		InfoOutputHelper.printInfo("LogLikehood: " + model.getLogLikelihood());
-		InfoOutputHelper.printInfo("Record: " + model.getRecord());
-		InfoOutputHelper.printInfo("Features: " + model.getNumFeatures());
+		// InfoOutputHelper.printInfo("AUC: " + learningAlgorithm.auc());
+		// InfoOutputHelper.printInfo("Correct: " + model.percentCorrect());
+		// InfoOutputHelper.printInfo("LogLikehood: " +
+		// model.getLogLikelihood());
+		// InfoOutputHelper.printInfo("Record: " + model.getRecord());
+		// InfoOutputHelper.printInfo("Features: " + model.getNumFeatures());
 
 		System.out.println();
 	}
@@ -456,11 +470,11 @@ public class SGDClassification {
 				+ this.mesurer.getGuessedPercent() + "% ("
 				+ this.mesurer.getGuessed() + "/" + testSessionSize + ")");
 
-		writer.println("AUC: " + model.auc());
-		writer.println("Correct: " + model.percentCorrect());
-		writer.println("LogLikehood: " + model.getLogLikelihood());
-		writer.println("Record: " + model.getRecord());
-		writer.println("Features: " + model.getNumFeatures());
+		// writer.println("AUC: " + model.auc());
+		// writer.println("Correct: " + model.percentCorrect());
+		// writer.println("LogLikehood: " + model.getLogLikelihood());
+		// writer.println("Record: " + model.getRecord());
+		// writer.println("Features: " + model.getNumFeatures());
 
 		writer.println();
 		writer.println("Incuded Features:");
@@ -503,7 +517,7 @@ public class SGDClassification {
 		for (SessionInfo session : subSessions) {
 			traceDictionary.clear();
 			Vector v = this.profileToVector(session);
-			md.update(v, traceDictionary, model);
+			md.update(v, traceDictionary, learningAlgorithm);
 		}
 
 		for (ModelDissector.Weight w : md.summary(builder.getFeatures())) {
@@ -537,10 +551,10 @@ public class SGDClassification {
 	}
 
 	public void saveModel(String path) throws IOException {
-		if (this.learningAlgorithm.getBest() != null) {
-			ModelSerializer.writeBinary(path + "best.model",
-					this.learningAlgorithm.getBest().getPayload().getLearner());
-		}
+		// if (this.learningAlgorithm != null) {
+		// ModelSerializer.writeBinary(path + "best.model",
+		// this.learningAlgorithm);
+		// }
 		ModelSerializer.writeBinary(path + "complete.model",
 				this.learningAlgorithm);
 
@@ -550,9 +564,9 @@ public class SGDClassification {
 			IOException {
 		this.learningAlgorithm = ModelSerializer.readBinary(
 				new FileInputStream(path + "complete.model"),
-				AdaptiveLogisticRegression.class);
-		this.model = ModelSerializer.readBinary(new FileInputStream(path
-				+ "best.model"), CrossFoldLearner.class);
+				OnlineLogisticRegression.class);
+		// this.model = ModelSerializer.readBinary(new FileInputStream(path
+		// + "best.model"), CrossFoldLearner.class);
 		this.learningAlgorithm.close();
 
 	}
