@@ -2,13 +2,16 @@ package org.recsyschallenge;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.security.SecureRandom;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 
 import org.apache.commons.cli.BasicParser;
 import org.apache.commons.cli.CommandLine;
@@ -42,8 +45,8 @@ public class RecSysMain {
 	private static SGDClassificationBuilder getBuilder() {
 		int interval = 8000;
 		int avgWindow = 5000;
-		int features = 100000; // 86206
-		int upSamplingRatio = (int) ratio;
+		int features = 5000; // 86206
+		int upSamplingRatio = (int) 10;
 		SGDClassificationBuilder builder = new SGDClassificationBuilder(
 				features, interval, avgWindow, upSamplingRatio, buysCount,
 				ratio);
@@ -162,12 +165,12 @@ public class RecSysMain {
 		Map<Integer, SessionInfo> trainSessions;
 		List<SessionInfo> trainSessionsList;
 
-		FilesParserHelper trainParser = FilesParserHelper.newInstance(
-				clicksPath, buysPath, 509696, 8);
+		// FilesParserHelper trainParser = FilesParserHelper.newInstance(
+		// clicksPath, buysPath, 509696, 8);
 
 		try {
 
-			trainSessions = trainParser.parseSessions();
+			trainSessions = new HashMap<Integer, SessionInfo>();// trainParser.parseSessions();
 			trainSessionsList = new ArrayList<SessionInfo>(
 					trainSessions.values());
 
@@ -183,7 +186,7 @@ public class RecSysMain {
 			return recommender;
 
 		} finally {
-			trainParser.dispose();
+			// trainParser.dispose();
 			trainSessionsList = null;
 		}
 	}
@@ -254,14 +257,14 @@ public class RecSysMain {
 		InfoOutputHelper.printInfo("Classified sessions:" + buySessions.size());
 
 		classification = null;
-
+		// if (false) {
 		UserBasedRecomender recommender = getRecommender(buySessions, dataDir
 				+ CLICKS_FILE, dataDir + BUYS_FILE);
 
-		recommender.evalute();
+		// recommender.evalute();
 
 		Map<Integer, List<Integer>> buySessionInfo = recommender
-				.getUserIntersect();
+				.getUserIntersect(itemWeights);
 		Date now = new Date();
 		recommender.exportToFile(outputDir + now.toString() + OUTPUT_FILE,
 				buySessionInfo);

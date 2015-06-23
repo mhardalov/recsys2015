@@ -1,13 +1,19 @@
 package org.recsyschallenge.algorithms.classification;
 
 import java.io.IOException;
+import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
 
 import org.recsyschallenge.models.SessionClicks;
 import org.recsyschallenge.models.SessionInfo;
 
-public class TFIDFAnalysis {
+public class TFIDFAnalysis implements Serializable {
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = 8428619570617604288L;
+	
 	private Map<Integer, Integer> dictionary;
 	private Map<Integer, Long> documentFrequency;
 	private Map<String, Integer> dictionaryCategories;

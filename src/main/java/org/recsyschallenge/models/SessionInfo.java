@@ -18,7 +18,7 @@ public class SessionInfo implements Serializable {
 	 * 
 	 */
 	private static final long serialVersionUID = 4097902057395609332L;
-	private static final float threshold = 6.0f;
+	private static final float threshold = 8.0f;
 
 	private final int sessionId;
 	private List<SessionBuys> buys;

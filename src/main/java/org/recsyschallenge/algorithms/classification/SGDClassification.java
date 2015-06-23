@@ -194,7 +194,7 @@ public class SGDClassification {
 					// * catWeight, v);
 					break;
 				}
-				if (catWeight > 0) {
+				if (catWeight > 0.2) {
 					encoder.addToVector(category, normItemCount * catWeight, v);
 				}
 			}
@@ -299,20 +299,19 @@ public class SGDClassification {
 				(float) uniqueClicksInSession.size() / clickCount, v);
 
 		// TFIDF tfidf = new TFIDF();
-		// double prop = 0;
-		// for (Entry<Integer, Integer> entry :
-		// uniqueClicksInSession.entrySet()) {
-		// int itemId = entry.getKey();
-		// int count = entry.getValue();
-		//
-		// double itemWeight = itemWeights.getItemWeight(itemId);
-		// if (itemWeight > 0) {
-		// prop += (itemWeight * count);
-		// // Math.log(1 + tfIdfValue)
-		// this.itemsEncoder.addToVector(String.valueOf(itemId),
-		// itemWeight * count, v);
-		// }
-		// }
+		double prop = 0;
+		for (Entry<Integer, Integer> entry : uniqueClicksInSession.entrySet()) {
+			int itemId = entry.getKey();
+			int count = entry.getValue();
+
+			double itemWeight = itemWeights.getItemWeight(itemId);
+			if (itemWeight >= 0.7) {
+				prop += (itemWeight * count);
+				// Math.log(1 + tfIdfValue)
+				this.itemsEncoder.addToVector(String.valueOf(itemId),
+						itemWeight * count, v);
+			}
+		}
 		//
 		// this.itemsBuyProp.addToVector((byte[]) null, Math.log(1 + prop), v);
 
